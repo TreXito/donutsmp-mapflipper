@@ -5,11 +5,16 @@ const CONFIG = {
   port: 25565,
   username: process.env.BOT_USERNAME || 'BOT_USERNAME',
   version: '1.21.1',
-  maxBuyPrice: 5000,
-  sellPrice: '9.9k',
-  delayBetweenCycles: 5000,
-  delayAfterJoin: 5000,
+  maxBuyPrice: parseInt(process.env.MAX_BUY_PRICE) || 5000,
+  sellPrice: process.env.SELL_PRICE || '9.9k',
+  delayBetweenCycles: parseInt(process.env.DELAY_BETWEEN_CYCLES) || 5000,
+  delayAfterJoin: parseInt(process.env.DELAY_AFTER_JOIN) || 5000,
 };
+
+// Constants
+const HOTBAR_START_SLOT = 36;
+const HOTBAR_END_SLOT = 44;
+const WARN_MAP_COUNT_THRESHOLD = 5;
 
 let bot;
 let isAfkDetected = false;
@@ -55,6 +60,12 @@ function sleep(ms) {
 }
 
 async function handleAfkDetection() {
+  // Prevent multiple simultaneous AFK handling
+  if (isAfkDetected) {
+    console.log('[AFK] Already handling AFK detection');
+    return;
+  }
+  
   console.log('[AFK] Detected AFK teleport, returning to hub...');
   isAfkDetected = true;
   isRunning = false;
@@ -85,7 +96,7 @@ async function handleAfkDetection() {
     console.log('[AFK] Resuming main loop');
     
     // Resume main loop
-    mainLoop();
+    setImmediate(() => mainLoop());
   } catch (error) {
     console.error('[AFK] Error handling AFK:', error);
     isAfkDetected = false;
@@ -217,10 +228,10 @@ async function unstackMaps() {
     if (item && item.name && item.name.includes('map') && item.count > 1) {
       console.log(`[INVENTORY] Found map stack of ${item.count} at slot ${slot}`);
       
-      // Unstack to hotbar slots (36-44 in inventory window)
+      // Unstack to hotbar slots (HOTBAR_START_SLOT-HOTBAR_END_SLOT in inventory window)
       for (let i = 0; i < item.count - 1; i++) {
-        const hotbarSlot = 36 + i;
-        if (hotbarSlot < 45) {
+        const hotbarSlot = HOTBAR_START_SLOT + i;
+        if (hotbarSlot <= HOTBAR_END_SLOT) {
           // Right-click to pick up one
           await bot.clickWindow(slot, 1, 0);
           await sleep(100);
@@ -239,12 +250,12 @@ async function unstackMaps() {
 async function listMaps() {
   console.log('[LISTING] Listing purchased maps...');
   
-  // Find maps in hotbar (slots 36-44 correspond to hotbar 0-8)
+  // Find maps in hotbar (slots HOTBAR_START_SLOT-HOTBAR_END_SLOT correspond to hotbar 0-8)
   const inventory = bot.inventory;
   const maps = [];
   
   for (let i = 0; i < 9; i++) {
-    const item = inventory.slots[36 + i];
+    const item = inventory.slots[HOTBAR_START_SLOT + i];
     if (item && item.name && item.name.includes('map')) {
       maps.push(i);
     }
@@ -254,7 +265,7 @@ async function listMaps() {
   
   // Check if we might hit the 27 slot limit
   // This is a rough estimate - ideally we'd query actual AH slots
-  if (maps.length > 5) {
+  if (maps.length > WARN_MAP_COUNT_THRESHOLD) {
     console.log('[LISTING] Warning: Listing many maps at once - may hit slot limit');
   }
   
@@ -279,20 +290,20 @@ async function mainLoop() {
     const window = await openAuctionHouse();
     
     // Find cheap map
-    const cheapMap = findCheapMap(window);
+    let cheapMap = findCheapMap(window);
     
     if (!cheapMap) {
       console.log('[AH] No cheap maps found, waiting before retry...');
       try {
         if (bot.currentWindow) {
-          bot.closeWindow(window);
+          bot.closeWindow(bot.currentWindow);
         }
       } catch (e) {
         console.log('[AH] Window already closed');
       }
       await sleep(CONFIG.delayBetweenCycles);
       isRunning = false;
-      mainLoop();
+      setImmediate(() => mainLoop());
       return;
     }
     
@@ -313,7 +324,8 @@ async function mainLoop() {
           console.log('[AH] No more cheap maps available');
           break;
         }
-        cheapMap.slot = nextMap.slot;
+        // Reassign the entire cheapMap object
+        cheapMap = nextMap;
       }
     }
     
@@ -323,7 +335,7 @@ async function mainLoop() {
       // Close auction house safely
       try {
         if (bot.currentWindow) {
-          bot.closeWindow(window);
+          bot.closeWindow(bot.currentWindow);
         }
       } catch (e) {
         console.log('[AH] Window already closed');
@@ -342,7 +354,7 @@ async function mainLoop() {
       console.log('[AH] Failed to purchase map after retries');
       try {
         if (bot.currentWindow) {
-          bot.closeWindow(window);
+          bot.closeWindow(bot.currentWindow);
         }
       } catch (e) {
         console.log('[AH] Window already closed');
@@ -354,7 +366,7 @@ async function mainLoop() {
     
     // Continue the loop
     if (!isAfkDetected) {
-      mainLoop();
+      setImmediate(() => mainLoop());
     }
   } catch (error) {
     console.error('[ERROR] Error in main loop:', error);
@@ -363,7 +375,7 @@ async function mainLoop() {
     // Retry after delay
     await sleep(CONFIG.delayBetweenCycles);
     if (!isAfkDetected) {
-      mainLoop();
+      setImmediate(() => mainLoop());
     }
   }
 }
