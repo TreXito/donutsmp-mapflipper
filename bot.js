@@ -38,8 +38,15 @@ function parsePrice(loreString) {
   const clean = loreString.replace(/§[0-9a-fk-or]/gi, '');
   const match = clean.match(/Price:\s*\$([0-9,.]+)(K?)/i);
   if (!match) return null;
+  
+  // Remove commas (thousands separators)
   let price = parseFloat(match[1].replace(/,/g, ''));
-  if (match[2].toUpperCase() === 'K') price *= 1000;
+  
+  // Apply K multiplier if present
+  if (match[2] && match[2].toUpperCase() === 'K') {
+    price *= 1000;
+  }
+  
   return price;
 }
 
@@ -108,24 +115,44 @@ function findCheapMap(window) {
     if (!item) continue;
     
     // Check if item has lore with price information
-    const nbt = item.nbt;
-    if (!nbt || !nbt.value || !nbt.value.display) continue;
-    
-    const display = nbt.value.display.value;
-    if (!display.Lore) continue;
-    
-    const lore = display.Lore.value.value;
-    
-    // Parse lore lines
-    for (const loreLine of lore) {
-      const lineText = loreLine || loreLine.toString();
-      if (lineText.includes('Price:')) {
-        const price = parsePrice(lineText);
-        if (price !== null && price < CONFIG.maxBuyPrice) {
-          console.log(`[AH] Found cheap map at slot ${slot}: $${price}`);
-          return { slot, price };
+    try {
+      const nbt = item.nbt;
+      if (!nbt || !nbt.value) continue;
+      
+      // Try to access display data
+      let loreArray = null;
+      
+      if (nbt.value.display && nbt.value.display.value && nbt.value.display.value.Lore) {
+        const loreData = nbt.value.display.value.Lore;
+        if (loreData.value && loreData.value.value) {
+          loreArray = loreData.value.value;
+        } else if (loreData.value) {
+          loreArray = loreData.value;
         }
       }
+      
+      if (!loreArray || !Array.isArray(loreArray)) continue;
+      
+      // Parse lore lines
+      for (const loreLine of loreArray) {
+        let lineText = '';
+        if (typeof loreLine === 'string') {
+          lineText = loreLine;
+        } else if (loreLine && typeof loreLine.toString === 'function') {
+          lineText = loreLine.toString();
+        }
+        
+        if (lineText.includes('Price:')) {
+          const price = parsePrice(lineText);
+          if (price !== null && price < CONFIG.maxBuyPrice) {
+            console.log(`[AH] Found cheap map at slot ${slot}: $${price}`);
+            return { slot, price };
+          }
+        }
+      }
+    } catch (error) {
+      // Skip items with parsing errors
+      continue;
     }
   }
   
@@ -219,6 +246,12 @@ async function listMaps() {
   }
   
   console.log(`[LISTING] Found ${maps.length} map(s) in hotbar`);
+  
+  // Check if we might hit the 27 slot limit
+  // This is a rough estimate - ideally we'd query actual AH slots
+  if (maps.length > 5) {
+    console.log('[LISTING] Warning: Listing many maps at once - may hit slot limit');
+  }
   
   for (const hotbarSlot of maps) {
     console.log(`[LISTING] Listing map from hotbar slot ${hotbarSlot}...`);
