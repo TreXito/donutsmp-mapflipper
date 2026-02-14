@@ -1,0 +1,20 @@
+{
+  "name": "donutsmp-mapflipper",
+  "version": "1.0.0",
+  "description": "Mineflayer bot for flipping maps on DonutSMP auction house",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "keywords": [
+    "mineflayer",
+    "minecraft",
+    "bot",
+    "auction"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "mineflayer": "^4.20.1"
+  }
+}
