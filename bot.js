@@ -162,33 +162,38 @@ function findCheapMap(window) {
 async function buyMap(window, mapSlot) {
   console.log(`[AH] Attempting to buy map at slot ${mapSlot}...`);
   
-  // Click the map slot
-  await bot.clickWindow(mapSlot, 0, 0);
-  await sleep(500);
-  
-  // Click confirm button at slot 15
-  console.log('[AH] Clicking confirm button...');
-  await bot.clickWindow(15, 0, 0);
-  await sleep(1000);
-  
-  // Wait to see if "already bought" message appears
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      resolve(true); // Assume success if no error message
-    }, 2000);
+  try {
+    // Click the map slot
+    await bot.clickWindow(mapSlot, 0, 0);
+    await sleep(500);
     
-    const messageHandler = (msg) => {
-      const normalized = normalizeText(msg);
-      if (normalized.includes('already bought')) {
-        clearTimeout(timeout);
-        bot.off('messagestr', messageHandler);
-        console.log('[AH] Item was already bought, retrying...');
-        resolve(false);
-      }
-    };
+    // Click confirm button at slot 15
+    console.log('[AH] Clicking confirm button...');
+    await bot.clickWindow(15, 0, 0);
+    await sleep(1000);
     
-    bot.on('messagestr', messageHandler);
-  });
+    // Wait to see if "already bought" message appears
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve(true); // Assume success if no error message
+      }, 2000);
+      
+      const messageHandler = (msg) => {
+        const normalized = normalizeText(msg);
+        if (normalized.includes('already bought')) {
+          clearTimeout(timeout);
+          bot.off('messagestr', messageHandler);
+          console.log('[AH] Item was already bought, retrying...');
+          resolve(false);
+        }
+      };
+      
+      bot.on('messagestr', messageHandler);
+    });
+  } catch (error) {
+    console.error('[AH] Error buying map:', error);
+    return false;
+  }
 }
 
 async function unstackMaps() {
@@ -278,7 +283,13 @@ async function mainLoop() {
     
     if (!cheapMap) {
       console.log('[AH] No cheap maps found, waiting before retry...');
-      bot.closeWindow(window);
+      try {
+        if (bot.currentWindow) {
+          bot.closeWindow(window);
+        }
+      } catch (e) {
+        console.log('[AH] Window already closed');
+      }
       await sleep(CONFIG.delayBetweenCycles);
       isRunning = false;
       mainLoop();
@@ -309,8 +320,14 @@ async function mainLoop() {
     if (purchased) {
       console.log('[AH] Successfully purchased map!');
       
-      // Close auction house
-      bot.closeWindow(window);
+      // Close auction house safely
+      try {
+        if (bot.currentWindow) {
+          bot.closeWindow(window);
+        }
+      } catch (e) {
+        console.log('[AH] Window already closed');
+      }
       await sleep(500);
       
       // Unstack if needed
@@ -323,7 +340,13 @@ async function mainLoop() {
       await sleep(1000);
     } else {
       console.log('[AH] Failed to purchase map after retries');
-      bot.closeWindow(window);
+      try {
+        if (bot.currentWindow) {
+          bot.closeWindow(window);
+        }
+      } catch (e) {
+        console.log('[AH] Window already closed');
+      }
       await sleep(CONFIG.delayBetweenCycles);
     }
     
