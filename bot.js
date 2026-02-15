@@ -595,14 +595,14 @@ function createBot() {
     //   "PlayerName bought your Map for $9.9K"
     //   "Test User bought your Map for $9900"  (usernames can have spaces)
     //   "SomeGuy123 bought your Map for $10,000"
-    const saleMatch = msg.match(/(.+)\s+bought your Map for \$([0-9,.]+)(K?)/i);
+    const saleMatch = msg.match(/(.+?)\s+bought your Map for \$([0-9,.]+)(K?)/i);
     if (saleMatch) {
       const buyer = saleMatch[1].trim();
       const priceStr = `Price: $${saleMatch[2]}${saleMatch[3] || ''}`;
       
       const salePrice = parsePrice(priceStr);
       if (salePrice === null) {
-        console.log('[SALE] Invalid price format, skipping webhook');
+        console.log(`[SALE] Invalid price format "$${saleMatch[2]}${saleMatch[3] || ''}", skipping webhook`);
         return;
       }
       
