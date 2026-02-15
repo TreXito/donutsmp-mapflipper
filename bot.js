@@ -1,12 +1,12 @@
 // === MUST BE FIRST LINES OF FILE ===
 const _stdoutWrite = process.stdout.write.bind(process.stdout);
 const _stderrWrite = process.stderr.write.bind(process.stderr);
-const _filter = (chunk) => {
+const _shouldFilterLog = (chunk) => {
   const s = typeof chunk === 'string' ? chunk : chunk.toString();
   return s.includes('Chunk size is') || s.includes('partial packet') || s.includes('player_info');
 };
-process.stdout.write = function(chunk, ...a) { if (_filter(chunk)) return true; return _stdoutWrite(chunk, ...a); };
-process.stderr.write = function(chunk, ...a) { if (_filter(chunk)) return true; return _stderrWrite(chunk, ...a); };
+process.stdout.write = function(chunk, ...a) { if (_shouldFilterLog(chunk)) return true; return _stdoutWrite(chunk, ...a); };
+process.stderr.write = function(chunk, ...a) { if (_shouldFilterLog(chunk)) return true; return _stderrWrite(chunk, ...a); };
 // === END FILTER ===
 
 const mineflayer = require('mineflayer');
@@ -158,8 +158,15 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Custom click function that uses tracked stateId to prevent "Invalid sequence" kicks
-// This is necessary because mineflayer's bot.clickWindow() doesn't track stateId correctly in 1.21.1
+/**
+ * Custom window click function that uses tracked stateId to prevent "Invalid sequence" kicks.
+ * This is necessary because mineflayer's bot.clickWindow() doesn't track stateId correctly in 1.21.1+.
+ * 
+ * @param {number} windowId - The window ID (use window.id from the opened window)
+ * @param {number} slot - The slot number to click (0-based index)
+ * @param {number} mouseButton - Mouse button: 0 = left, 1 = right, 2 = middle
+ * @param {number} mode - Click mode: 0 = normal click, 1 = shift-click, 2 = number key, etc.
+ */
 function clickWindowSlot(windowId, slot, mouseButton, mode) {
   if (!bot || !bot._client) {
     console.error('[CLICK] Bot or client not available for window click');
@@ -174,7 +181,9 @@ function clickWindowSlot(windowId, slot, mouseButton, mode) {
     mouseButton: mouseButton,
     mode: mode,
     stateId: lastStateId,
+    // cursorItem.present: false means no item is on the cursor
     cursorItem: { present: false },
+    // changedSlots: [] tells the server we're not predicting slot changes - let the server handle it
     changedSlots: []
   });
 }
@@ -432,6 +441,8 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
   try {
     // Click the map slot using manual window click with stateId
     clickWindowSlot(window.id, mapSlot, 0, 0);
+    // Wait 1 second for the server to update the window state
+    // Longer delay needed for reliable state updates in 1.21.1 protocol
     await sleep(1000);
     
     // Click confirm button at slot 15
