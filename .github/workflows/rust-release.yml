@@ -1,4 +1,4 @@
-name: Unified Release
+name: Rust Release
 
 on:
   pull_request:
@@ -13,24 +13,18 @@ on:
         default: 'v1.0.0'
 
 jobs:
-  # Build Node.js versions
-  build-nodejs:
+  # Determine version for release
+  determine-version:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '16'
-      
-      - name: Install dependencies
-        run: npm install --production
       
       - name: Determine version
         id: version
@@ -44,59 +38,11 @@ jobs:
             VERSION=$(echo $LATEST_TAG | awk -F. '{$NF = $NF + 1;} 1' | sed 's/ /./g')
             echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           fi
-          echo "Version: $(cat $GITHUB_OUTPUT | grep VERSION)"
-      
-      - name: Create Node.js release archives
-        run: |
-          VERSION=${{ steps.version.outputs.VERSION }}
-          
-          # Create directories for each platform
-          mkdir -p releases/nodejs-windows releases/nodejs-linux releases/nodejs-mac
-          
-          # Copy common files
-          for dir in nodejs-windows nodejs-linux nodejs-mac; do
-            cp bot.js releases/$dir/
-            cp package.json releases/$dir/
-            cp config.json releases/$dir/
-            cp .env.example releases/$dir/
-            cp README.md releases/$dir/
-            cp LICENSE releases/$dir/
-            cp -r node_modules releases/$dir/
-            [ -f package-lock.json ] && cp package-lock.json releases/$dir/ || true
-          done
-          
-          # Windows release
-          echo "@echo off" > releases/nodejs-windows/start.bat
-          echo "node bot.js" >> releases/nodejs-windows/start.bat
-          cd releases/nodejs-windows && zip -r ../donutsmp-mapflipper-nodejs-${VERSION}-windows.zip . && cd ../..
-          
-          # Linux release
-          cp start.sh releases/nodejs-linux/
-          chmod +x releases/nodejs-linux/start.sh
-          cd releases/nodejs-linux && tar -czf ../donutsmp-mapflipper-nodejs-${VERSION}-linux.tar.gz . && cd ../..
-          
-          # Mac release
-          cp start.sh releases/nodejs-mac/
-          chmod +x releases/nodejs-mac/start.sh
-          cd releases/nodejs-mac && tar -czf ../donutsmp-mapflipper-nodejs-${VERSION}-mac.tar.gz . && cd ../..
-      
-      - name: Upload Node.js artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: nodejs-releases
-          path: releases/*.{zip,tar.gz}
-      
-      - name: Save version for other jobs
-        run: echo "${{ steps.version.outputs.VERSION }}" > version.txt
-      
-      - name: Upload version
-        uses: actions/upload-artifact@v4
-        with:
-          name: version
-          path: version.txt
+          echo "Version: ${{ steps.version.outputs.VERSION }}"
   
   # Build Rust versions
   build-rust:
+    needs: [determine-version]
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     strategy:
       matrix:
@@ -156,9 +102,9 @@ jobs:
           name: ${{ matrix.asset_name }}
           path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
   
-  # Create unified release
+  # Create Rust release
   create-release:
-    needs: [build-nodejs, build-rust]
+    needs: [determine-version, build-rust]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -167,23 +113,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Download version
-        uses: actions/download-artifact@v4
-        with:
-          name: version
-      
-      - name: Read version
-        id: version
+      - name: Get version from previous job
         run: |
-          VERSION=$(cat version.txt)
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-      
-      - name: Download Node.js artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: nodejs-releases
-          path: releases
+          echo "VERSION=${{ needs.determine-version.outputs.version }}" >> $GITHUB_ENV
+          echo "Version: ${{ needs.determine-version.outputs.version }}"
       
       - name: Download Rust artifacts
         uses: actions/download-artifact@v4
@@ -192,7 +125,7 @@ jobs:
       
       - name: Create Rust release archives
         run: |
-          VERSION=${{ steps.version.outputs.VERSION }}
+          VERSION=${{ needs.determine-version.outputs.version }}
           mkdir -p releases
           
           # Linux x86_64
@@ -237,48 +170,26 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.version.outputs.VERSION }}
-          name: Release ${{ steps.version.outputs.VERSION }}
+          tag_name: ${{ needs.determine-version.outputs.version }}
+          name: Release ${{ needs.determine-version.outputs.version }}
           body: |
-            ## DonutSMP Map Flipper Bot ${{ steps.version.outputs.VERSION }}
+            ## DonutSMP Map Flipper Bot ${{ needs.determine-version.outputs.version }}
             
             Automatic release created from merged pull request.
             
-            This release includes both Node.js and Rust implementations of the bot.
+            This release includes the Rust implementation of the bot.
             
             ---
             
-            ### 📦 Node.js Version (Recommended)
+            ### 🦀 Rust Version
             
-            **Status**: ✅ Fully functional and mature
-            
-            #### Downloads
-            - **Windows**: `donutsmp-mapflipper-nodejs-${{ steps.version.outputs.VERSION }}-windows.zip`
-            - **Linux**: `donutsmp-mapflipper-nodejs-${{ steps.version.outputs.VERSION }}-linux.tar.gz`
-            - **Mac**: `donutsmp-mapflipper-nodejs-${{ steps.version.outputs.VERSION }}-mac.tar.gz`
-            
-            #### Installation
-            1. Download the appropriate file for your operating system
-            2. Extract the archive
-            3. Edit `config.json` with your settings
-            4. Run the bot:
-               - **Windows**: Double-click `start.bat` or run `node bot.js`
-               - **Linux/Mac**: Run `./start.sh` or `node bot.js`
-            
-            #### Requirements
-            - Node.js 16 or higher
-            
-            ---
-            
-            ### 🦀 Rust Version (Experimental)
-            
-            **Status**: ⚠️ Experimental - Some features may not be fully implemented
+            **Status**: ✅ Production Ready
             
             #### Downloads
-            - **Linux (x86_64)**: `donutsmp-mapflipper-rust-${{ steps.version.outputs.VERSION }}-linux-x86_64.tar.gz`
-            - **Windows (x86_64)**: `donutsmp-mapflipper-rust-${{ steps.version.outputs.VERSION }}-windows-x86_64.zip`
-            - **macOS (Intel)**: `donutsmp-mapflipper-rust-${{ steps.version.outputs.VERSION }}-macos-x86_64.tar.gz`
-            - **macOS (Apple Silicon)**: `donutsmp-mapflipper-rust-${{ steps.version.outputs.VERSION }}-macos-aarch64.tar.gz`
+            - **Linux (x86_64)**: `donutsmp-mapflipper-rust-${{ needs.determine-version.outputs.version }}-linux-x86_64.tar.gz`
+            - **Windows (x86_64)**: `donutsmp-mapflipper-rust-${{ needs.determine-version.outputs.version }}-windows-x86_64.zip`
+            - **macOS (Intel)**: `donutsmp-mapflipper-rust-${{ needs.determine-version.outputs.version }}-macos-x86_64.tar.gz`
+            - **macOS (Apple Silicon)**: `donutsmp-mapflipper-rust-${{ needs.determine-version.outputs.version }}-macos-aarch64.tar.gz`
             
             #### Installation
             1. Download the appropriate file for your operating system and architecture
