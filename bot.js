@@ -43,6 +43,7 @@ const CONFIG = {
   sellPrice: fileConfig.sellPrice || process.env.SELL_PRICE || '9.9k',
   delayBetweenCycles: fileConfig.delayBetweenCycles || parseInt(process.env.DELAY_BETWEEN_CYCLES) || 5000,
   delayAfterJoin: fileConfig.delayAfterJoin || parseInt(process.env.DELAY_AFTER_JOIN) || 5000,
+  windowTimeout: fileConfig.windowTimeout || parseInt(process.env.WINDOW_TIMEOUT) || 15000,
   debugEvents: fileConfig.debugEvents || process.env.DEBUG_EVENTS === 'true' || false,
   webhook: fileConfig.webhook || {
     enabled: false,
@@ -258,7 +259,7 @@ async function openAuctionHouse() {
     const timeout = setTimeout(() => {
       bot.off('windowOpen', windowHandler);
       reject(new Error('Timeout waiting for auction house window'));
-    }, 15000); // Increased timeout to 15 seconds for slow servers
+    }, CONFIG.windowTimeout);
     
     const windowHandler = (window) => {
       clearTimeout(timeout);
@@ -269,10 +270,9 @@ async function openAuctionHouse() {
     bot.once('windowOpen', windowHandler);
   });
   
-  // Log the exact command being sent
-  const command = '/ah map';
-  console.log('[AH] Sending command:', JSON.stringify(command));
-  bot.chat(command);
+  // Log and send the command
+  console.log('[AH] Sending command: /ah map');
+  bot.chat('/ah map');
   
   // Small delay to prevent "Invalid sequence" kick
   await sleep(300);
@@ -668,8 +668,11 @@ function createBot() {
   bot = mineflayer.createBot(botOptions);
   
   // Optional event debugger to diagnose window opening issues
+  // WARNING: This overrides bot.emit which could potentially interfere with
+  // internal mineflayer event handling. Only enable for debugging purposes.
   if (CONFIG.debugEvents) {
     console.log('[DEBUG] Event debugger enabled - will log all non-spam events');
+    console.log('[DEBUG] WARNING: This overrides bot.emit and should only be used for debugging');
     const originalEmit = bot.emit.bind(bot);
     bot.emit = function(event, ...args) {
       // Filter out high-frequency spam events that make debugging impossible

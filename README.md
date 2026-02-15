@@ -82,7 +82,8 @@ Set environment variables to override defaults:
 - `sellPrice`: Price to list maps at (default: 9.9k)
 - `delayBetweenCycles`: Wait time between auction checks in ms (default: 5000)
 - `delayAfterJoin`: Wait time after spawning before starting (default: 5000)
-- `debugEvents`: Enable event debugging to diagnose window opening issues (default: false)
+- `windowTimeout`: Timeout for window opening operations in ms (default: 15000)
+- `debugEvents`: Enable event debugging to diagnose window opening issues (default: false) - **Warning: Only use for debugging**
 - `webhook`: Webhook configuration for Discord notifications
   - `enabled`: Enable webhook notifications (default: false)
   - `url`: Discord webhook URL
@@ -249,15 +250,21 @@ The bot monitors chat for messages containing "teleported to" and "afk" (includi
 
 If the bot times out waiting for the auction house window to open:
 
-1. **Enable debug events** to see what events are being triggered:
+1. **Increase the timeout**: Edit your config.json to increase `windowTimeout`:
+   ```json
+   {
+     "windowTimeout": 20000
+   }
+   ```
+   The default is 15 seconds (15000ms). Increase to 20 or 30 seconds if your server is slow.
+
+2. **Enable debug events** to see what events are being triggered:
    ```json
    {
      "debugEvents": true
    }
    ```
-   This will log all non-spam events to help diagnose the issue.
-
-2. **Check timeout settings**: The default timeout is 15 seconds. If your server is very slow, you may need to adjust this in the code.
+   This will log all non-spam events to help diagnose the issue. **Warning: This is only for debugging and may interfere with bot operation.**
 
 3. **Verify command format**: The bot sends `/ah map` - ensure this is the correct command for your server.
 
