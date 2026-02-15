@@ -13,11 +13,35 @@ A Mineflayer bot that automates buying cheap maps from the auction house on donu
 - ✅ Microsoft authentication support
 - ✅ Discord webhook notifications for purchases, sales, and events
 - ✅ Partial packet error suppression
+- ✅ Automated releases for Windows, Linux, and Mac
 
 ## Requirements
 
 - Node.js (v16 or higher)
 - Minecraft Java Edition account (Microsoft account required for online servers)
+
+## Quick Start
+
+### Option 1: Download Pre-built Release (Recommended)
+
+1. Go to the [Releases](https://github.com/TreXito/donutsmp-mapflipper/releases) page
+2. Download the latest release for your operating system:
+   - **Windows**: `donutsmp-mapflipper-vX.X.X-windows.zip`
+   - **Linux**: `donutsmp-mapflipper-vX.X.X-linux.tar.gz`
+   - **Mac**: `donutsmp-mapflipper-vX.X.X-mac.tar.gz`
+3. Extract the archive
+4. Copy `config.template.json` to `config.json` and configure your settings
+5. Run the bot:
+   - **Windows**: Double-click `start.bat` or run `node bot.js`
+   - **Linux/Mac**: Run `./start.sh` or `node bot.js`
+
+### Option 2: Clone from Source
+
+```bash
+git clone https://github.com/TreXito/donutsmp-mapflipper.git
+cd donutsmp-mapflipper
+npm install
+```
 
 ## Installation
 
@@ -290,6 +314,29 @@ The bot automatically suppresses harmless "Chunk size is X but only Y was read" 
 - Compatible with Minecraft 1.21.11
 - Uses Minecraft chat commands and GUI window interaction
 - Parses item NBT data for price information
+
+## Development & Releases
+
+### Automated Releases
+
+This project uses GitHub Actions to automatically create releases for Windows, Linux, and Mac whenever a pull request is merged to the main branch. Each release includes:
+
+- Pre-installed dependencies (`node_modules`)
+- Platform-specific start scripts (`start.bat` for Windows, `start.sh` for Linux/Mac)
+- All necessary configuration files
+- Complete documentation
+
+### Creating a Manual Release
+
+Repository maintainers can create a release manually:
+
+1. Go to the **Actions** tab in GitHub
+2. Select the **Release** workflow
+3. Click **Run workflow**
+4. Enter the desired version tag (e.g., `v1.0.0`)
+5. Click **Run workflow**
+
+The workflow will build and publish releases for all three platforms automatically.
 
 ## License
 
