@@ -84,6 +84,9 @@ const HOTBAR_START_SLOT = 36;
 const HOTBAR_END_SLOT = 44;
 const WARN_MAP_COUNT_THRESHOLD = 5;
 const MIN_RETRY_DELAY = 3000; // Minimum delay before retry after errors (ms)
+const REDUCED_CYCLE_DELAY = 2500; // Fast cycle delay when no maps found or purchase failed (ms)
+const CLICK_CONFIRM_DELAY = 400; // Delay between clicking item and confirm button (ms)
+const REFRESH_WAIT_DELAY = 500; // Delay after clicking refresh button (ms)
 
 let bot;
 let isAfkDetected = false;
@@ -441,9 +444,9 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
   try {
     // Click the map slot using manual window click with stateId
     clickWindowSlot(window.id, mapSlot, 0, 0);
-    // Wait 400ms for the server to update the window state
+    // Wait for the server to update the window state
     // Reduced from 1000ms - stateId tracking handles protocol correctness
-    await sleep(400);
+    await sleep(CLICK_CONFIRM_DELAY);
     
     // Click confirm button at slot 15
     console.log('[AH] Clicking confirm button...');
@@ -621,7 +624,7 @@ async function listMaps() {
       
       // Step 4: Click slot 0 to select the item
       clickWindowSlot(confirmWindow.id, 0, 0, 0);
-      await sleep(400); // Wait for confirm button to appear (reduced from 1000ms)
+      await sleep(CLICK_CONFIRM_DELAY); // Wait for confirm button to appear
       
       // Step 5: Click confirm button at slot 15
       console.log('[LISTING] Clicking confirm button at slot 15...');
@@ -693,7 +696,7 @@ async function mainLoop() {
         // Click refresh button at slot 49 (the anvil)
         console.log('[AH] Clicking refresh button (slot 49)...');
         clickWindowSlot(window.id, 49, 0, 0);
-        await sleep(500); // Wait for refresh to complete
+        await sleep(REFRESH_WAIT_DELAY); // Wait for refresh to complete
         
         // Check again after refresh
         cheapMap = findCheapMap(window);
@@ -703,8 +706,8 @@ async function mainLoop() {
           if (bot.currentWindow) {
             bot.closeWindow(bot.currentWindow);
           }
-          // Reduced delay from 5000ms to 2500ms when no cheap maps
-          await sleep(2500);
+          // Reduced delay when no cheap maps found
+          await sleep(REDUCED_CYCLE_DELAY);
           isRunning = false;
           setImmediate(() => mainLoop());
           return;
@@ -714,7 +717,7 @@ async function mainLoop() {
         if (bot.currentWindow) {
           bot.closeWindow(bot.currentWindow);
         }
-        await sleep(2500);
+        await sleep(REDUCED_CYCLE_DELAY);
         isRunning = false;
         setImmediate(() => mainLoop());
         return;
@@ -781,7 +784,7 @@ async function mainLoop() {
         }
       }
       // Reduced delay when purchase fails
-      await sleep(2500);
+      await sleep(REDUCED_CYCLE_DELAY);
     }
     
     isRunning = false;
@@ -814,7 +817,7 @@ async function mainLoop() {
     
     // Wait at least MIN_RETRY_DELAY (3s) before retry to prevent "Invalid sequence" kick
     // Especially important after timeout errors
-    const retryDelay = Math.max(2500, MIN_RETRY_DELAY);
+    const retryDelay = Math.max(REDUCED_CYCLE_DELAY, MIN_RETRY_DELAY);
     console.log(`[ERROR] Waiting ${retryDelay}ms before retry to avoid protocol conflicts`);
     await sleep(retryDelay);
     
