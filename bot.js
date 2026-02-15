@@ -103,51 +103,56 @@ async function sendWebhook(event, data) {
   if (!CONFIG.webhook.enabled || !CONFIG.webhook.url) return;
   if (!CONFIG.webhook.events[event]) return;
   
-  const url = new URL(CONFIG.webhook.url);
-  const payload = JSON.stringify({
-    username: 'DonutSMP Map Flipper',
-    embeds: [{
-      title: `${event.charAt(0).toUpperCase() + event.slice(1)} Event`,
-      description: data.message,
-      color: data.color || 3447003,
-      timestamp: new Date().toISOString(),
-      fields: data.fields || []
-    }]
-  });
-  
-  return new Promise((resolve) => {
-    const options = {
-      hostname: url.hostname,
-      port: url.port || 443,
-      path: url.pathname + url.search,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload)
-      }
-    };
+  try {
+    const url = new URL(CONFIG.webhook.url);
+    const payload = JSON.stringify({
+      username: 'DonutSMP Map Flipper',
+      embeds: [{
+        title: `${event.charAt(0).toUpperCase() + event.slice(1)} Event`,
+        description: data.message,
+        color: data.color || 3447003,
+        timestamp: new Date().toISOString(),
+        fields: data.fields || []
+      }]
+    });
     
-    const req = https.request(options, (res) => {
-      let responseData = '';
-      res.on('data', (chunk) => { responseData += chunk; });
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve();
-        } else {
-          console.error(`[WEBHOOK] Failed to send webhook (status ${res.statusCode}):`, responseData);
-          resolve(); // Still resolve to not break bot flow
+    return new Promise((resolve) => {
+      const options = {
+        hostname: url.hostname,
+        port: url.port || 443,
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
         }
+      };
+      
+      const req = https.request(options, (res) => {
+        let responseData = '';
+        res.on('data', (chunk) => { responseData += chunk; });
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve();
+          } else {
+            console.error(`[WEBHOOK] Failed to send webhook (status ${res.statusCode}):`, responseData);
+            resolve(); // Still resolve to not break bot flow
+          }
+        });
       });
+      
+      req.on('error', (err) => {
+        console.error('[WEBHOOK] Error sending webhook:', err.message);
+        resolve(); // Still resolve to not break bot flow
+      });
+      
+      req.write(payload);
+      req.end();
     });
-    
-    req.on('error', (err) => {
-      console.error('[WEBHOOK] Error sending webhook:', err.message);
-      resolve(); // Still resolve to not break bot flow
-    });
-    
-    req.write(payload);
-    req.end();
-  });
+  } catch (error) {
+    console.error('[WEBHOOK] Invalid webhook URL:', error.message);
+    return Promise.resolve();
+  }
 }
 
 async function handleAfkDetection() {
@@ -252,17 +257,22 @@ function findCheapMap(window) {
           lineText = loreLine.toString();
         }
         
-        if (lineText.includes('Price:')) {
+        if (!price && lineText.includes('Price:')) {
           price = parsePrice(lineText);
         }
         
         // Try to find seller name in lore
-        if (lineText.includes('Seller:')) {
+        if (!seller && lineText.includes('Seller:')) {
           const clean = stripMinecraftColors(lineText);
           const sellerMatch = clean.match(/Seller:\s*(.+)/i);
           if (sellerMatch) {
             seller = sellerMatch[1].trim();
           }
+        }
+        
+        // Break early if we found both
+        if (price !== null && seller) {
+          break;
         }
       }
       
@@ -294,8 +304,13 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
     
     // Wait to see if "already bought" message appears
     return new Promise((resolve) => {
+      let purchaseSuccessful = false;
+      
       const timeout = setTimeout(() => {
-        // Send webhook on successful purchase
+        purchaseSuccessful = true;
+        bot.off('messagestr', messageHandler);
+        
+        // Send webhook only on confirmed success
         sendWebhook('purchase', {
           message: `✅ Bought a map for $${mapPrice}`,
           color: 5763719,
@@ -304,7 +319,8 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
             { name: 'Seller', value: mapSeller || 'Unknown', inline: true }
           ]
         });
-        resolve(true); // Assume success if no error message
+        
+        resolve(true);
       }, 2000);
       
       const messageHandler = (msg) => {
@@ -583,24 +599,21 @@ function createBot() {
       const buyer = saleMatch[1].trim();
       const priceStr = `Price: $${saleMatch[2]}${saleMatch[3] || ''}`;
       
-      // Validate captured data before processing
-      if (buyer) {
-        const salePrice = parsePrice(priceStr);
-        if (salePrice === null) {
-          console.log('[SALE] Invalid price format, skipping webhook');
-          return;
-        }
-        
-        console.log(`[SALE] ${buyer} bought a map for $${salePrice}`);
-        sendWebhook('sale', {
-          message: `💰 Sold a map!`,
-          color: 5763719,
-          fields: [
-            { name: 'Buyer', value: buyer, inline: true },
-            { name: 'Price', value: `$${salePrice}`, inline: true }
-          ]
-        });
+      const salePrice = parsePrice(priceStr);
+      if (salePrice === null) {
+        console.log('[SALE] Invalid price format, skipping webhook');
+        return;
       }
+      
+      console.log(`[SALE] ${buyer} bought a map for $${salePrice}`);
+      sendWebhook('sale', {
+        message: `💰 Sold a map!`,
+        color: 5763719,
+        fields: [
+          { name: 'Buyer', value: buyer, inline: true },
+          { name: 'Price', value: `$${salePrice}`, inline: true }
+        ]
+      });
     }
   });
   
