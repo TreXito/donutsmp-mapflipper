@@ -256,16 +256,16 @@ async function openAuctionHouse() {
   
   // Register window listener BEFORE sending command to prevent race condition
   const windowPromise = new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      bot.off('windowOpen', windowHandler);
-      reject(new Error('Timeout waiting for auction house window'));
-    }, CONFIG.windowTimeout);
-    
     const windowHandler = (window) => {
       clearTimeout(timeout);
       console.log(`[AH] Window opened - Type: ${window.type}, Total slots: ${window.slots.length}`);
       resolve(window);
     };
+    
+    const timeout = setTimeout(() => {
+      bot.off('windowOpen', windowHandler);
+      reject(new Error('Timeout waiting for auction house window'));
+    }, CONFIG.windowTimeout);
     
     bot.once('windowOpen', windowHandler);
   });
@@ -675,14 +675,20 @@ function createBot() {
     console.log('[DEBUG] WARNING: This overrides bot.emit and should only be used for debugging');
     const originalEmit = bot.emit.bind(bot);
     bot.emit = function(event, ...args) {
-      // Filter out high-frequency spam events that make debugging impossible
-      if (event !== 'move' && 
-          event !== 'entityMoved' && 
-          event !== 'physicsTick' && 
-          !event.startsWith('packet_')) {
-        console.log('[EVENT]', event);
+      try {
+        // Filter out high-frequency spam events that make debugging impossible
+        if (event !== 'move' && 
+            event !== 'entityMoved' && 
+            event !== 'physicsTick' && 
+            !event.startsWith('packet_')) {
+          console.log('[EVENT]', event);
+        }
+        return originalEmit(event, ...args);
+      } catch (error) {
+        console.error('[DEBUG] Error in event debugger:', error);
+        // Ensure original emit still runs even if our logging fails
+        return originalEmit(event, ...args);
       }
-      return originalEmit(event, ...args);
     };
   }
   
