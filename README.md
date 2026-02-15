@@ -50,7 +50,7 @@ A Mineflayer bot for flipping maps on DonutSMP auction house.
 - ✅ Microsoft authentication support
 - ✅ Discord webhook notifications for purchases, sales, and events
 - ✅ Partial packet error suppression
-- ✅ Automated releases for Windows, Linux, and Mac
+- ✅ Automated unified releases for Windows, Linux, and Mac (includes both Node.js and Rust versions)
 
 ## Requirements
 
@@ -63,9 +63,11 @@ A Mineflayer bot for flipping maps on DonutSMP auction house.
 
 1. Go to the [Releases](https://github.com/TreXito/donutsmp-mapflipper/releases) page
 2. Download the latest release for your operating system:
-   - **Windows**: `donutsmp-mapflipper-vX.X.X-windows.zip`
-   - **Linux**: `donutsmp-mapflipper-vX.X.X-linux.tar.gz`
-   - **Mac**: `donutsmp-mapflipper-vX.X.X-mac.tar.gz`
+   - **Node.js Version (Recommended)**:
+     - **Windows**: `donutsmp-mapflipper-nodejs-vX.X.X-windows.zip`
+     - **Linux**: `donutsmp-mapflipper-nodejs-vX.X.X-linux.tar.gz`
+     - **Mac**: `donutsmp-mapflipper-nodejs-vX.X.X-mac.tar.gz`
+   - **Rust Version (Experimental)**: See release notes for Rust binaries
 3. Extract the archive
 4. Copy `config.template.json` to `config.json` and configure your settings
 5. Run the bot:
