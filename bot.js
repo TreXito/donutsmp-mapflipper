@@ -590,9 +590,14 @@ async function listMaps() {
   console.log('[LISTING] Listing purchased maps...');
   
   let listedCount = 0;
+  let iterations = 0;
+  const maxIterations = 50; // Safety limit to prevent infinite loops
+  const failedSlots = new Set(); // Track slots that failed to prevent infinite retries
   
   // Keep listing until no more maps are found
-  while (true) {
+  while (iterations < maxIterations) {
+    iterations++;
+    
     // Find ALL maps in the entire inventory (not just hotbar)
     const inventory = bot.inventory;
     const allMapItems = [];
@@ -600,7 +605,8 @@ async function listMaps() {
     // Scan all inventory slots for maps
     for (let slot = 0; slot < inventory.slots.length; slot++) {
       const item = inventory.slots[slot];
-      if (item && item.name && item.name.includes('map')) {
+      // Skip slots that have failed before
+      if (item && item.name && item.name.includes('map') && !failedSlots.has(slot)) {
         allMapItems.push({ item, slot });
       }
     }
@@ -633,7 +639,8 @@ async function listMaps() {
         await sleep(200);
       } catch (error) {
         console.error(`[LISTING] Error moving map to hotbar:`, error.message);
-        // If we can't move it, skip this iteration and try again
+        // Mark this slot as failed to prevent infinite retries
+        failedSlots.add(slot);
         await sleep(500);
         continue;
       }
@@ -708,9 +715,14 @@ async function listMaps() {
           // Ignore close errors
         }
       }
-      // Don't break the loop, try the next map
+      // Mark this slot as failed to prevent infinite retries
+      failedSlots.add(slot);
       await sleep(500);
     }
+  }
+  
+  if (iterations >= maxIterations) {
+    console.log(`[LISTING] Reached maximum iterations (${maxIterations}), stopping to prevent infinite loop`);
   }
   
   if (listedCount > 0) {
