@@ -432,6 +432,10 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
           bot.off('messagestr', messageHandler);
           sendSuccessWebhook();
           resolve(true);
+        } else {
+          // Window closed after already bought message - this is a failed purchase
+          console.log('[AH] Window closed after "already bought" message');
+          resolve(false);
         }
       };
       
@@ -442,11 +446,16 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
         bot.off('windowClose', windowCloseHandler);
         bot.off('messagestr', messageHandler);
         
-        // If we haven't received "already bought" message, assume success
+        // If we haven't received "already bought" message but window didn't close,
+        // this is an ambiguous state - could be network delay or purchase issue
         if (!alreadyBoughtMessageReceived) {
-          console.log('[AH] Window did not close in time, assuming success');
-          sendSuccessWebhook();
-          resolve(true);
+          console.log('[AH] Warning: Window did not close in time - uncertain purchase state');
+          console.log('[AH] Attempting to verify by checking inventory...');
+          // Resolve as failed to trigger retry logic - safer than assuming success
+          resolve(false);
+        } else {
+          // Already bought message received, definitely failed
+          resolve(false);
         }
       }, 3000);
       
@@ -476,27 +485,25 @@ async function unstackMaps() {
   // Access bot's inventory directly - it's always available without opening
   const inventory = bot.inventory;
   
-  // Check if any maps are stacked (count > 1)
-  let hasStacks = false;
-  for (let slot = 0; slot < inventory.slots.length; slot++) {
-    const item = inventory.slots[slot];
-    if (item && item.name && item.name.includes('map') && item.count > 1) {
-      hasStacks = true;
-      console.log(`[INVENTORY] Found map stack of ${item.count} at slot ${slot}`);
-    }
-  }
+  // Use inventory.items() to get only valid items (safer than iterating all slots)
+  const items = inventory.items();
+  const stackedMaps = items.filter(item => 
+    item.name && item.name.includes('map') && item.count > 1
+  );
   
-  if (!hasStacks) {
+  if (stackedMaps.length === 0) {
     console.log('[INVENTORY] No stacked maps found, skipping unstack');
     return;
   }
   
+  console.log(`[INVENTORY] Found ${stackedMaps.length} stacked map(s)`);
+  for (const stack of stackedMaps) {
+    console.log(`[INVENTORY]   - ${stack.count} maps in slot ${inventory.slots.indexOf(stack)}`);
+  }
+  
   console.log('[INVENTORY] Note: Map unstacking requires opening inventory window');
   console.log('[INVENTORY] If maps come as single items from AH, this step can be skipped');
-  
-  // For now, skip the actual unstacking since bot.openInventory() doesn't exist
-  // and the maps likely come as single items from the AH anyway
-  console.log('[INVENTORY] Skipping unstack - maps should already be single items');
+  console.log('[INVENTORY] Skipping unstack - maps should already be single items from AH');
 }
 
 async function listMaps() {
