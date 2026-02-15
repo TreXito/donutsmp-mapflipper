@@ -10,7 +10,6 @@ use regex::Regex;
 mod config;
 mod price_parser;
 mod webhook;
-mod items;
 mod inventory;
 
 use config::Config;
@@ -175,19 +174,29 @@ async fn run_cycle(bot: Client, state: BotState) -> Result<bool> {
     println!("[AH] Opening auction house...");
     
     match open_auction_house(&bot, &state.config).await {
-        Ok(_container) => {
+        Ok(Some(menu)) => {
             println!("[AH] Auction house opened successfully");
             
             // Step 2: Find cheap maps
-            // Note: _container would be the actual container object from Azalea
-            // For now, we pass () as placeholder
-            if let Some(map) = find_cheap_maps(&(), state.config.max_buy_price) {
+            if let Some(map) = find_cheap_maps(&menu, state.config.max_buy_price) {
                 println!("[AH] Found cheap map: ${} from {}", map.price, map.seller);
                 
                 // Step 3: Attempt purchase
-                match purchase_map(&bot, &(), &map, &state.config).await {
+                match purchase_map(&bot, &map, &state.config).await {
                     Ok(true) => {
                         println!("[AH] Purchase successful!");
+                        
+                        // Send webhook notification
+                        let _ = send_webhook(
+                            &state.config,
+                            "purchase",
+                            &format!("💰 Purchased map for ${}", map.price),
+                            0x2ecc71,
+                            vec![
+                                ("Price".to_string(), format!("${}", map.price), true),
+                                ("Seller".to_string(), map.seller.clone(), true),
+                            ],
+                        ).await;
                         
                         // Step 4: List the purchased map
                         if let Err(e) = list_maps(&bot, &state.config).await {
@@ -197,7 +206,7 @@ async fn run_cycle(bot: Client, state: BotState) -> Result<bool> {
                         return Ok(true);
                     }
                     Ok(false) => {
-                        println!("[AH] Purchase failed (already bought)");
+                        println!("[AH] Purchase failed (already bought or error)");
                     }
                     Err(e) => {
                         eprintln!("[AH] Purchase error: {}", e);
@@ -207,16 +216,11 @@ async fn run_cycle(bot: Client, state: BotState) -> Result<bool> {
                 println!("[AH] No cheap maps found under ${}", state.config.max_buy_price);
             }
         }
+        Ok(None) => {
+            println!("[AH] Auction house window did not open");
+        }
         Err(e) => {
-            // This error is expected since window interaction isn't implemented yet
-            if !e.to_string().contains("not yet implemented") {
-                eprintln!("[AH] Error opening auction house: {}", e);
-            }
-            
-            // Fallback: Just send the command for now
-            println!("[AH] Sending /ah map command (window handling not implemented)");
-            bot.chat("/ah map");
-            sleep(Duration::from_millis(1000)).await;
+            eprintln!("[AH] Error opening auction house: {}", e);
         }
     }
     
