@@ -24,12 +24,46 @@ npm install
 
 ## Configuration
 
-The bot is configured through environment variables or by editing the CONFIG object in `bot.js`:
+The bot can be configured in two ways:
 
-- `BOT_USERNAME`: Your Minecraft username (can be set via environment variable)
+### Option 1: Using config.json (Recommended)
+
+1. Copy `config.example.json` to `config.json`:
+   ```bash
+   cp config.example.json config.json
+   ```
+
+2. Edit `config.json` with your settings:
+   ```json
+   {
+     "host": "donutsmp.net",
+     "port": 25565,
+     "username": "YourMinecraftUsername",
+     "version": "1.21.11",
+     "maxBuyPrice": 5000,
+     "sellPrice": "9.9k",
+     "delayBetweenCycles": 5000,
+     "delayAfterJoin": 5000
+   }
+   ```
+
+### Option 2: Using Environment Variables
+
+Set environment variables to override defaults:
+- `BOT_USERNAME`: Your Minecraft username
+- `MAX_BUY_PRICE`: Maximum price to buy maps (default: 5000)
+- `SELL_PRICE`: Price to list maps at (default: 9.9k)
+- `DELAY_BETWEEN_CYCLES`: Wait time between auction checks in ms (default: 5000)
+- `DELAY_AFTER_JOIN`: Wait time after spawning before starting (default: 5000)
+
+**Note:** config.json settings take priority over environment variables.
+
+### Configuration Options
+
 - `host`: Server address (default: donutsmp.net)
 - `port`: Server port (default: 25565)
-- `version`: Minecraft version (1.21.1)
+- `username`: Your Minecraft username (required)
+- `version`: Minecraft version (1.21.11)
 - `maxBuyPrice`: Maximum price to buy maps (default: $5000)
 - `sellPrice`: Price to list maps at (default: 9.9k)
 - `delayBetweenCycles`: Wait time between auction checks in ms (default: 5000)
@@ -37,14 +71,47 @@ The bot is configured through environment variables or by editing the CONFIG obj
 
 ## Usage
 
-### Using environment variable for username:
+### Using config.json (Recommended):
 ```bash
-BOT_USERNAME=YourMinecraftUsername node bot.js
+# 1. Create and edit your config file
+cp config.example.json config.json
+# Edit config.json with your Minecraft username
+
+# 2. Run the bot
+npm start
 ```
 
-### Or edit the CONFIG in bot.js and run:
+### Using environment variable for username:
 ```bash
+BOT_USERNAME=YourMinecraftUsername npm start
+```
+
+### Using the start script (Linux/Mac):
+```bash
+BOT_USERNAME=YourMinecraftUsername ./start.sh
+```
+
+## WSL (Windows Subsystem for Linux) Users
+
+If you encounter errors like `UNC paths are not supported` when running from WSL, this is because Node.js on Windows doesn't support UNC paths (paths like `\\wsl.localhost\...`). Here are solutions:
+
+**Option 1: Run from Linux side (Recommended)**
+```bash
+# Inside WSL terminal, navigate to your home directory
+cd ~/donutsmp-mapflipper
 npm start
+```
+
+**Option 2: Run from Windows side**
+```cmd
+# From Windows Command Prompt or PowerShell
+cd C:\Users\YourUsername\path\to\donutsmp-mapflipper
+npm start
+```
+
+**Option 3: Use the start.sh script from WSL**
+```bash
+./start.sh
 ```
 
 ## How It Works
@@ -75,7 +142,7 @@ The bot monitors chat for messages containing "teleported to" and "afk" (includi
 ## Technical Details
 
 - Built with [Mineflayer](https://github.com/PrismarineJS/mineflayer)
-- Compatible with Minecraft 1.21.1
+- Compatible with Minecraft 1.21.11
 - Uses Minecraft chat commands and GUI window interaction
 - Parses item NBT data for price information
 

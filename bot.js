@@ -1,14 +1,32 @@
 const mineflayer = require('mineflayer');
+const fs = require('fs');
+const path = require('path');
+
+// Load configuration from config.json if it exists
+let fileConfig = {};
+const configPath = path.join(__dirname, 'config.json');
+if (fs.existsSync(configPath)) {
+  try {
+    const configData = fs.readFileSync(configPath, 'utf8');
+    fileConfig = JSON.parse(configData);
+    console.log('[CONFIG] Loaded configuration from config.json');
+  } catch (error) {
+    console.error('[CONFIG] Error loading config.json:', error.message);
+    console.log('[CONFIG] Falling back to environment variables and defaults');
+  }
+} else {
+  console.log('[CONFIG] No config.json found, using environment variables and defaults');
+}
 
 const CONFIG = {
-  host: 'donutsmp.net',
-  port: 25565,
-  username: process.env.BOT_USERNAME || 'BOT_USERNAME',
-  version: '1.21.1',
-  maxBuyPrice: parseInt(process.env.MAX_BUY_PRICE) || 5000,
-  sellPrice: process.env.SELL_PRICE || '9.9k',
-  delayBetweenCycles: parseInt(process.env.DELAY_BETWEEN_CYCLES) || 5000,
-  delayAfterJoin: parseInt(process.env.DELAY_AFTER_JOIN) || 5000,
+  host: fileConfig.host || 'donutsmp.net',
+  port: fileConfig.port || 25565,
+  username: fileConfig.username || process.env.BOT_USERNAME || 'BOT_USERNAME',
+  version: fileConfig.version || '1.21.11',
+  maxBuyPrice: fileConfig.maxBuyPrice || parseInt(process.env.MAX_BUY_PRICE) || 5000,
+  sellPrice: fileConfig.sellPrice || process.env.SELL_PRICE || '9.9k',
+  delayBetweenCycles: fileConfig.delayBetweenCycles || parseInt(process.env.DELAY_BETWEEN_CYCLES) || 5000,
+  delayAfterJoin: fileConfig.delayAfterJoin || parseInt(process.env.DELAY_AFTER_JOIN) || 5000,
 };
 
 // Constants

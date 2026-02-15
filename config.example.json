@@ -1,0 +1,10 @@
+{
+  "host": "donutsmp.net",
+  "port": 25565,
+  "username": "BOT_USERNAME",
+  "version": "1.21.11",
+  "maxBuyPrice": 5000,
+  "sellPrice": "9.9k",
+  "delayBetweenCycles": 5000,
+  "delayAfterJoin": 5000
+}
