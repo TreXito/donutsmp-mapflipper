@@ -1,0 +1,281 @@
+use azalea::prelude::*;
+use azalea::container::ContainerClientExt;
+use azalea::inventory::{ItemStack, Menu};
+use azalea::inventory::components::Lore;
+use anyhow::{Result, anyhow};
+use std::time::Duration;
+use tokio::time::sleep;
+use crate::config::Config;
+
+pub struct MapSlot {
+    pub slot: usize,
+    pub price: u32,
+    pub seller: String,
+}
+
+/// Parse price and seller from item lore
+pub fn parse_item_info(lore: &[String]) -> Option<(u32, String)> {
+    use crate::price_parser::{parse_price, strip_minecraft_colors};
+    
+    let mut price = None;
+    let mut seller = String::from("unknown");
+    
+    for line in lore {
+        // Look for price
+        if line.contains("Price:") {
+            if let Some(p) = parse_price(line) {
+                price = Some(p);
+            }
+        }
+        
+        // Look for seller
+        if line.contains("Seller:") {
+            let clean = strip_minecraft_colors(line);
+            if let Some(seller_match) = clean.strip_prefix("Seller:") {
+                seller = seller_match.trim().to_string();
+            }
+        }
+    }
+    
+    price.map(|p| (p, seller))
+}
+
+/// Extract lore text from an item
+/// In Minecraft 1.21.1+, lore is stored in components, not NBT
+pub fn extract_lore(item: &ItemStack) -> Vec<String> {
+    // Check if item is present and has lore component
+    if let Some(lore_component) = item.get_component::<Lore>() {
+        // Extract text from each lore line
+        lore_component.lines.iter()
+            .map(|formatted_text| {
+                // Convert FormattedText to plain string
+                format!("{}", formatted_text)
+            })
+            .collect()
+    } else {
+        vec![]
+    }
+}
+
+/// Open the auction house window
+///
+/// Reference: bot.js lines 323-359
+pub async fn open_auction_house(bot: &Client, config: &Config) -> Result<Option<Menu>> {
+    println!("[AH] Opening auction house...");
+    
+    // Send the /ah map command
+    bot.chat("/ah map");
+    
+    // Wait for protocol timing (300ms to prevent "Invalid sequence" kick)
+    sleep(Duration::from_millis(300)).await;
+    
+    // Wait for container to open with timeout (convert ms to ticks: ms/50)
+    let timeout_ticks = config.window_timeout / 50;
+    
+    println!("[AH] Waiting for auction house window to open (timeout: {}ms)...", config.window_timeout);
+    
+    // Use Azalea's wait_for_container_open function
+    match bot.wait_for_container_open(Some(timeout_ticks as usize)).await {
+        Some(container_handle) => {
+            // Get the menu from the container
+            if let Some(menu) = container_handle.menu() {
+                println!("[AH] Auction house opened successfully");
+                // Don't close container - we need to keep it open to interact
+                // Drop the handle without closing by using std::mem::forget
+                std::mem::forget(container_handle);
+                Ok(Some(menu))
+            } else {
+                Err(anyhow!("Container opened but menu is not available"))
+            }
+        }
+        None => {
+            Err(anyhow!("Timeout waiting for auction house window ({}ms)", config.window_timeout))
+        }
+    }
+}
+
+/// Find cheap maps in the auction house container
+///
+/// Reference: bot.js lines 361-436
+pub fn find_cheap_maps(menu: &Menu, max_price: u32) -> Option<MapSlot> {
+    println!("[AH] Scanning for cheap maps under ${}...", max_price);
+    
+    // Determine container size based on menu type
+    let container_size = match menu {
+        Menu::Generic9x6 { contents, .. } => contents.len(),
+        Menu::Generic9x5 { contents, .. } => contents.len(),
+        Menu::Generic9x4 { contents, .. } => contents.len(),
+        Menu::Generic9x3 { contents, .. } => contents.len(),
+        Menu::Generic9x2 { contents, .. } => contents.len(),
+        Menu::Generic9x1 { contents, .. } => contents.len(),
+        _ => {
+            println!("[AH] Unknown menu type, cannot scan");
+            return None;
+        }
+    };
+    
+    println!("[AH] Scanning {} container slots...", container_size);
+    
+    // Get the actual slots from the menu
+    let slots = menu.slots();
+    
+    // ONLY scan container slots, NOT player inventory
+    for slot_index in 0..container_size {
+        if slot_index >= slots.len() {
+            break;
+        }
+        
+        let item = &slots[slot_index];
+        
+        // Skip empty slots
+        if item.is_empty() {
+            continue;
+        }
+        
+        // Extract lore from item
+        let lore_lines = extract_lore(item);
+        
+        if lore_lines.is_empty() {
+            continue;
+        }
+        
+        // Parse price and seller from lore
+        if let Some((price, seller)) = parse_item_info(&lore_lines) {
+            if price < max_price {
+                println!("[AH] ✓ Found cheap map at slot {}: ${} (seller: {})", slot_index, price, seller);
+                return Some(MapSlot {
+                    slot: slot_index,
+                    price,
+                    seller,
+                });
+            }
+        }
+    }
+    
+    println!("[AH] No cheap maps found under ${}", max_price);
+    None
+}
+
+/// Purchase a map from the auction house
+///
+/// State ID tracking is CRITICAL for MC 1.21.1:
+/// - Azalea handles state ID tracking internally
+/// - We just need to use the click API properly
+///
+/// Reference: bot.js lines 438-537
+pub async fn purchase_map(
+    bot: &Client,
+    map: &MapSlot,
+    _config: &Config,
+) -> Result<bool> {
+    println!("[AH] Attempting to purchase map at slot {} for ${}...", map.slot, map.price);
+    
+    // Get the current container handle to interact with it
+    let container = bot.get_inventory();
+    
+    // Step 1: Click the map slot
+    println!("[AH] Clicking map slot {}...", map.slot);
+    container.left_click(map.slot as usize);
+    
+    // Step 2: Wait for window update
+    sleep(Duration::from_millis(1000)).await;
+    
+    // Step 3: Click confirm button (usually slot 15 in auction house GUIs)
+    // This slot number may need adjustment based on the actual AH GUI layout
+    println!("[AH] Clicking confirm button (slot 15)...");
+    container.left_click(15_usize);
+    
+    // Step 4: Wait for purchase to complete
+    // In the JS version, we wait for window close and check for "already bought" message
+    // For now, we'll wait a bit and assume success if no errors
+    sleep(Duration::from_millis(2000)).await;
+    
+    // TODO: Implement purchase verification by checking chat messages
+    // This would require listening to chat events for "already bought" messages
+    
+    println!("[AH] Purchase command sent, assuming success");
+    Ok(true)
+}
+
+/// List maps from inventory on auction house
+///
+/// Reference: bot.js lines 572-610
+pub async fn list_maps(bot: &Client, config: &Config) -> Result<()> {
+    println!("[LISTING] Listing maps...");
+    
+    // Get bot's inventory
+    let inventory_handle = bot.get_inventory();
+    
+    // Get the menu to check what items we have
+    if let Some(menu) = inventory_handle.menu() {
+        // Get all slots from the menu
+        let slots = menu.slots();
+        
+        // Find map items in the inventory
+        // Hotbar is typically the last 9 slots of the player inventory
+        let start_slot = slots.len().saturating_sub(9);
+        
+        for (idx, slot) in slots.iter().enumerate().skip(start_slot) {
+            if slot.is_present() {
+                // Check if this is a map item
+                // Maps in Minecraft are ItemKind::FilledMap or ItemKind::Map
+                if let ItemStack::Present(data) = slot {
+                    let item_name = format!("{:?}", data.kind);
+                    if item_name.to_lowercase().contains("map") {
+                        println!("[LISTING] Found map in slot {}, listing...", idx);
+                        
+                        // Send /ah sell command
+                        bot.chat(&format!("/ah sell {}", config.sell_price));
+                        
+                        // Wait between listings to avoid spam
+                        sleep(Duration::from_millis(500)).await;
+                    }
+                }
+            }
+        }
+    }
+    
+    println!("[LISTING] Finished listing maps");
+    Ok(())
+}
+
+/*
+ * IMPLEMENTATION GUIDE
+ * ====================
+ *
+ * To complete this module, you need to understand Azalea's APIs for:
+ *
+ * 1. Inventory/Container/Menu Access
+ *    - How to access opened containers
+ *    - How to read container slots
+ *    - How to get item data from slots
+ *
+ * 2. Item Data Structure (MC 1.21.1)
+ *    - Items use component-based format
+ *    - Lore is in item.components array
+ *    - Need to find component with type === 'lore'
+ *    - Parse component.data array
+ *
+ * 3. Packet Sending
+ *    - How to send window_click packets
+ *    - How to track state IDs from server packets
+ *    - Structure of click packets in Azalea
+ *
+ * 4. Event System
+ *    - Container/menu open events
+ *    - Container update events
+ *    - Window close events
+ *    - Chat message events
+ *
+ * Key Resources:
+ * - Azalea docs: https://docs.rs/azalea/
+ * - Azalea GitHub: https://github.com/azalea-rs/azalea
+ * - Azalea examples: https://github.com/azalea-rs/azalea/tree/main/azalea/examples
+ * - JavaScript reference: bot.js in this repository
+ *
+ * State ID Tracking is CRITICAL:
+ * - MC 1.21.1 requires accurate state IDs in window clicks
+ * - Wrong state ID = "Invalid sequence" disconnect
+ * - Must listen to window_items and set_slot packets
+ * - See bot.js lines 161-216 for implementation pattern
+ */

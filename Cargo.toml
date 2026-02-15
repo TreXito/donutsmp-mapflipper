@@ -1,0 +1,28 @@
+[package]
+name = "donutsmp-mapflipper"
+version = "1.0.0"
+edition = "2021"
+authors = ["DonutSMP Map Flipper Contributors"]
+description = "Minecraft bot for flipping maps on DonutSMP auction house"
+license = "MIT"
+repository = "https://github.com/TreXito/donutsmp-mapflipper"
+keywords = ["minecraft", "bot", "auction", "azalea"]
+
+[dependencies]
+azalea = "0.15.0+mc1.21.11"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
+parking_lot = "0.12"
+reqwest = { version = "0.12", features = ["json"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+chrono = "0.4"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "z"
