@@ -246,12 +246,12 @@ async function handleAfkDetection() {
 async function openAuctionHouse() {
   // Close any existing window before opening a new one to prevent protocol conflicts
   if (bot.currentWindow) {
-    console.log('[AH] Closing existing window before opening AH');
+    console.log('[AH] Closing existing window before opening AH (cleanup)');
     try {
       bot.closeWindow(bot.currentWindow);
       await sleep(500);
     } catch (e) {
-      console.log('[AH] Error closing window:', e.message);
+      console.log('[AH] Error closing window during pre-opening cleanup:', e.message);
     }
   }
   
@@ -618,11 +618,11 @@ async function mainLoop() {
     // Close any open window after error to prevent protocol conflicts
     try {
       if (bot.currentWindow) {
-        console.log('[ERROR] Closing window after error');
+        console.log('[ERROR] Closing window after error (cleanup)');
         bot.closeWindow(bot.currentWindow);
       }
     } catch (e) {
-      console.log('[ERROR] Window already closed or error closing:', e.message);
+      console.log('[ERROR] Window already closed or error during post-error cleanup:', e.message);
     }
     
     await sendWebhook('error', {
@@ -633,7 +633,7 @@ async function mainLoop() {
       ]
     });
     
-    // Wait 3-5 seconds before retry to prevent "Invalid sequence" kick
+    // Wait at least MIN_RETRY_DELAY (3s) before retry to prevent "Invalid sequence" kick
     // Especially important after timeout errors
     const retryDelay = Math.max(CONFIG.delayBetweenCycles, MIN_RETRY_DELAY);
     console.log(`[ERROR] Waiting ${retryDelay}ms before retry to avoid protocol conflicts`);

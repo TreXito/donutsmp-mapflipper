@@ -274,7 +274,7 @@ If the bot times out waiting for the auction house window to open:
 
 The bot now includes several protections against this protocol error:
 - Closes existing windows before opening new ones
-- Waits 300ms after sending commands
+- Waits 300ms after sending commands (client-side delay to prevent rapid sequential operations)
 - Adds a minimum 3-second delay before retrying after errors
 - Increased timeout to 15 seconds for slow servers
 
