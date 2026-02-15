@@ -114,6 +114,7 @@ A default `config.json` file is included in the repository. Simply edit it with 
      "version": "1.21.11",
      "maxBuyPrice": 2500,
      "sellPrice": "9.9k",
+     "maxListingsPerCycle": 20,
      "delayBetweenCycles": 5000,
      "delayAfterJoin": 5000,
      "webhook": {
@@ -153,6 +154,7 @@ Set environment variables to override defaults:
 - `version`: Minecraft version (1.21.11)
 - `maxBuyPrice`: Maximum price to buy maps (default: $2500)
 - `sellPrice`: Price to list maps at (default: 9.9k)
+- `maxListingsPerCycle`: Maximum number of maps to list per cycle (default: 20, max AH limit: 27)
 - `delayBetweenCycles`: Wait time between auction checks in ms (default: 5000)
 - `delayAfterJoin`: Wait time after spawning before starting (default: 5000)
 - `windowTimeout`: Timeout for window opening operations in ms (default: 15000)
