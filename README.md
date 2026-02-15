@@ -82,6 +82,7 @@ Set environment variables to override defaults:
 - `sellPrice`: Price to list maps at (default: 9.9k)
 - `delayBetweenCycles`: Wait time between auction checks in ms (default: 5000)
 - `delayAfterJoin`: Wait time after spawning before starting (default: 5000)
+- `debugEvents`: Enable event debugging to diagnose window opening issues (default: false)
 - `webhook`: Webhook configuration for Discord notifications
   - `enabled`: Enable webhook notifications (default: false)
   - `url`: Discord webhook URL
@@ -239,6 +240,42 @@ The bot monitors chat for messages containing "teleported to" and "afk" (includi
 - **Connection Loss**: Auto-reconnects after 30 seconds
 - **Map Stacking**: Automatically unstacks multiple maps to list individually
 - **Race Conditions**: Handles purchase confirmation delays and window updates
+- **Protocol Errors**: Prevents "Invalid sequence" kicks with proper timing and window management
+- **Window Opening Issues**: Registers listeners before commands to avoid race conditions
+
+## Troubleshooting
+
+### Bot Can't Open Auction House Window
+
+If the bot times out waiting for the auction house window to open:
+
+1. **Enable debug events** to see what events are being triggered:
+   ```json
+   {
+     "debugEvents": true
+   }
+   ```
+   This will log all non-spam events to help diagnose the issue.
+
+2. **Check timeout settings**: The default timeout is 15 seconds. If your server is very slow, you may need to adjust this in the code.
+
+3. **Verify command format**: The bot sends `/ah map` - ensure this is the correct command for your server.
+
+4. **Check for window conflicts**: The bot now automatically closes any existing windows before opening the auction house, but manual intervention may be needed if the bot gets stuck.
+
+### "Invalid Sequence" Kick
+
+The bot now includes several protections against this protocol error:
+- Closes existing windows before opening new ones
+- Waits 300ms after sending commands
+- Adds a minimum 3-second delay before retrying after errors
+- Increased timeout to 15 seconds for slow servers
+
+If you still experience this issue, try increasing `delayBetweenCycles` in your config.
+
+### Chunk Size Warnings
+
+The bot automatically suppresses harmless "Chunk size is X but only Y was read" messages. These are protocol parsing warnings that don't affect functionality.
 
 ## Technical Details
 
