@@ -610,7 +610,7 @@ async function listMaps() {
     // Step 3: Wait for confirmation window to open
     try {
       const confirmWindow = await new Promise((resolve, reject) => {
-        let timeout; // Declared before nested function references it
+        let timeout;
         
         const windowHandler = (window) => {
           clearTimeout(timeout);
@@ -637,7 +637,7 @@ async function listMaps() {
       
       // Step 6: Wait for window to close
       await new Promise((resolve) => {
-        let closeTimeout; // Use distinct name to avoid shadowing
+        let closeTimeout;
         
         const closeHandler = () => {
           console.log('[LISTING] Listing confirmed, window closed');
