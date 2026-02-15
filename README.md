@@ -29,6 +29,8 @@ npm install
 
 A default `config.json` file is included in the repository. Simply edit it with your settings:
 
+> **⚠️ Important:** The `config.json` file is tracked in git. If you plan to commit changes, be careful not to commit your actual credentials. Consider keeping your credentials in environment variables instead, or be mindful when committing.
+
 1. Edit `config.json` with your settings:
    ```json
    {

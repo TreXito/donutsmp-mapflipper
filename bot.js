@@ -8,7 +8,9 @@ const originalConsoleError = console.error;
 console.error = function(...args) {
   const message = args.join(' ');
   // Filter out partial packet errors which are harmless protocol parsing warnings
-  if (message.includes('partial packet') || message.includes('Chunk size is')) {
+  // These are very specific to minecraft-protocol's packet parser
+  if ((message.includes('partial packet') && message.includes('Chunk size is')) ||
+      (message.includes('Chunk size is') && message.includes('but only') && message.includes('was read'))) {
     return;
   }
   originalConsoleError.apply(console, args);
