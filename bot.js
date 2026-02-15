@@ -43,6 +43,8 @@ const CONFIG = {
   sellPrice: fileConfig.sellPrice || process.env.SELL_PRICE || '9.9k',
   delayBetweenCycles: fileConfig.delayBetweenCycles || parseInt(process.env.DELAY_BETWEEN_CYCLES) || 5000,
   delayAfterJoin: fileConfig.delayAfterJoin || parseInt(process.env.DELAY_AFTER_JOIN) || 5000,
+  windowTimeout: fileConfig.windowTimeout || parseInt(process.env.WINDOW_TIMEOUT) || 15000,
+  debugEvents: fileConfig.debugEvents || process.env.DEBUG_EVENTS === 'true' || false,
   webhook: fileConfig.webhook || {
     enabled: false,
     url: '',
@@ -62,6 +64,7 @@ const CONFIG = {
 const HOTBAR_START_SLOT = 36;
 const HOTBAR_END_SLOT = 44;
 const WARN_MAP_COUNT_THRESHOLD = 5;
+const MIN_RETRY_DELAY = 3000; // Minimum delay before retry after errors (ms)
 
 let bot;
 let isAfkDetected = false;
@@ -241,23 +244,41 @@ async function handleAfkDetection() {
 }
 
 async function openAuctionHouse() {
+  // Close any existing window before opening a new one to prevent protocol conflicts
+  if (bot.currentWindow) {
+    console.log('[AH] Closing existing window before opening AH (cleanup)');
+    try {
+      bot.closeWindow(bot.currentWindow);
+      await sleep(500);
+    } catch (e) {
+      console.log('[AH] Error closing window during pre-opening cleanup:', e.message);
+    }
+  }
+  
+  // Register window listener BEFORE sending command to prevent race condition
+  const windowPromise = new Promise((resolve, reject) => {
+    const windowHandler = (window) => {
+      clearTimeout(timeout);
+      console.log(`[AH] Window opened - Type: ${window.type}, Total slots: ${window.slots.length}`);
+      resolve(window);
+    };
+    
+    const timeout = setTimeout(() => {
+      bot.off('windowOpen', windowHandler);
+      reject(new Error('Timeout waiting for auction house window'));
+    }, CONFIG.windowTimeout);
+    
+    bot.once('windowOpen', windowHandler);
+  });
+  
+  // Log and send the command
   console.log('[AH] Sending command: /ah map');
   bot.chat('/ah map');
   
   // Small delay to prevent "Invalid sequence" kick
   await sleep(300);
   
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error('Timeout waiting for auction house window'));
-    }, 5000);
-    
-    bot.once('windowOpen', (window) => {
-      clearTimeout(timeout);
-      console.log(`[AH] Window opened - Type: ${window.type}, Total slots: ${window.slots.length}`);
-      resolve(window);
-    });
-  });
+  return windowPromise;
 }
 
 function findCheapMap(window) {
@@ -594,6 +615,16 @@ async function mainLoop() {
     console.error('[ERROR] Error in main loop:', error);
     isRunning = false;
     
+    // Close any open window after error to prevent protocol conflicts
+    try {
+      if (bot.currentWindow) {
+        console.log('[ERROR] Closing window after error (cleanup)');
+        bot.closeWindow(bot.currentWindow);
+      }
+    } catch (e) {
+      console.log('[ERROR] Window already closed or error during post-error cleanup:', e.message);
+    }
+    
     await sendWebhook('error', {
       message: `⚠️ Error in main loop`,
       color: 15158332,
@@ -602,8 +633,12 @@ async function mainLoop() {
       ]
     });
     
-    // Retry after delay
-    await sleep(CONFIG.delayBetweenCycles);
+    // Wait at least MIN_RETRY_DELAY (3s) before retry to prevent "Invalid sequence" kick
+    // Especially important after timeout errors
+    const retryDelay = Math.max(CONFIG.delayBetweenCycles, MIN_RETRY_DELAY);
+    console.log(`[ERROR] Waiting ${retryDelay}ms before retry to avoid protocol conflicts`);
+    await sleep(retryDelay);
+    
     if (!isAfkDetected) {
       setImmediate(() => mainLoop());
     }
@@ -631,6 +666,31 @@ function createBot() {
   }
   
   bot = mineflayer.createBot(botOptions);
+  
+  // Optional event debugger to diagnose window opening issues
+  // WARNING: This overrides bot.emit which could potentially interfere with
+  // internal mineflayer event handling. Only enable for debugging purposes.
+  if (CONFIG.debugEvents) {
+    console.log('[DEBUG] Event debugger enabled - will log all non-spam events');
+    console.log('[DEBUG] WARNING: This overrides bot.emit and should only be used for debugging');
+    const originalEmit = bot.emit.bind(bot);
+    bot.emit = function(event, ...args) {
+      try {
+        // Filter out high-frequency spam events that make debugging impossible
+        if (event !== 'move' && 
+            event !== 'entityMoved' && 
+            event !== 'physicsTick' && 
+            !event.startsWith('packet_')) {
+          console.log('[EVENT]', event);
+        }
+        return originalEmit(event, ...args);
+      } catch (error) {
+        console.error('[DEBUG] Error in event debugger:', error);
+        // Ensure original emit still runs even if our logging fails
+        return originalEmit(event, ...args);
+      }
+    };
+  }
   
   bot.on('login', () => {
     console.log(`[BOT] Logged in as ${bot.username}`);
