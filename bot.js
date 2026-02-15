@@ -64,6 +64,7 @@ const CONFIG = {
 const HOTBAR_START_SLOT = 36;
 const HOTBAR_END_SLOT = 44;
 const WARN_MAP_COUNT_THRESHOLD = 5;
+const MIN_RETRY_DELAY = 3000; // Minimum delay before retry after errors (ms)
 
 let bot;
 let isAfkDetected = false;
@@ -634,7 +635,7 @@ async function mainLoop() {
     
     // Wait 3-5 seconds before retry to prevent "Invalid sequence" kick
     // Especially important after timeout errors
-    const retryDelay = Math.max(CONFIG.delayBetweenCycles, 3000);
+    const retryDelay = Math.max(CONFIG.delayBetweenCycles, MIN_RETRY_DELAY);
     console.log(`[ERROR] Waiting ${retryDelay}ms before retry to avoid protocol conflicts`);
     await sleep(retryDelay);
     
@@ -652,7 +653,6 @@ function createBot() {
     port: CONFIG.port,
     username: CONFIG.username,
     version: CONFIG.version,
-    hideErrors: true, // Suppress chunk size and other harmless protocol warnings
   };
   
   // Add auth if specified (microsoft or offline)
