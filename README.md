@@ -27,16 +27,9 @@ npm install
 
 ## Configuration
 
-The bot can be configured in two ways:
+A default `config.json` file is included in the repository. Simply edit it with your settings:
 
-### Option 1: Using config.json (Recommended)
-
-1. Copy the template to create your config:
-   ```bash
-   cp config.template.json config.json
-   ```
-
-2. Edit `config.json` with your settings:
+1. Edit `config.json` with your settings:
    ```json
    {
      "host": "donutsmp.net",
@@ -44,7 +37,7 @@ The bot can be configured in two ways:
      "username": "your-email@example.com",
      "auth": "microsoft",
      "version": "1.21.11",
-     "maxBuyPrice": 5000,
+     "maxBuyPrice": 2500,
      "sellPrice": "9.9k",
      "delayBetweenCycles": 5000,
      "delayAfterJoin": 5000,
@@ -64,12 +57,12 @@ The bot can be configured in two ways:
    }
    ```
 
-### Option 2: Using Environment Variables
+### Alternative: Using Environment Variables
 
 Set environment variables to override defaults:
 - `BOT_USERNAME`: Your Minecraft email/username
 - `BOT_AUTH`: Authentication method ('microsoft' or 'offline', default: 'microsoft')
-- `MAX_BUY_PRICE`: Maximum price to buy maps (default: 5000)
+- `MAX_BUY_PRICE`: Maximum price to buy maps (default: 2500)
 - `SELL_PRICE`: Price to list maps at (default: 9.9k)
 - `DELAY_BETWEEN_CYCLES`: Wait time between auction checks in ms (default: 5000)
 - `DELAY_AFTER_JOIN`: Wait time after spawning before starting (default: 5000)
@@ -83,7 +76,7 @@ Set environment variables to override defaults:
 - `username`: Your Minecraft email (for Microsoft auth) or username (for offline)
 - `auth`: Authentication method - `'microsoft'` for Microsoft accounts (default), `'offline'` for cracked servers
 - `version`: Minecraft version (1.21.11)
-- `maxBuyPrice`: Maximum price to buy maps (default: $5000)
+- `maxBuyPrice`: Maximum price to buy maps (default: $2500)
 - `sellPrice`: Price to list maps at (default: 9.9k)
 - `delayBetweenCycles`: Wait time between auction checks in ms (default: 5000)
 - `delayAfterJoin`: Wait time after spawning before starting (default: 5000)
@@ -180,9 +173,7 @@ For offline/cracked servers that don't require authentication:
 
 ### Using config.json (Recommended):
 ```bash
-# 1. Copy template and edit with your settings
-cp config.template.json config.json
-# Edit config.json with your Minecraft username
+# 1. Edit config.json with your Minecraft username and settings
 # Enable webhooks if desired
 
 # 2. Run the bot
@@ -225,7 +216,7 @@ npm start
 ## How It Works
 
 1. **Connect to Server**: Bot joins donutsmp.net and waits 5 seconds after spawning
-2. **Monitor Auction House**: Opens `/ah map` and scans for maps under $5,000
+2. **Monitor Auction House**: Opens `/ah map` and scans for maps under $2,500
 3. **Purchase Maps**: Buys one affordable map at a time
 4. **Relist for Profit**: Immediately lists the purchased map for $9.9K
 5. **Loop**: Continues buying and listing maps automatically
