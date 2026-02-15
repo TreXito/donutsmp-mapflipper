@@ -7,6 +7,9 @@ use std::time::Duration;
 use tokio::time::sleep;
 use crate::config::Config;
 
+// Minecraft server tick rate: 1 tick = 50 milliseconds
+const MS_PER_TICK: u64 = 50;
+
 pub struct MapSlot {
     pub slot: usize,
     pub price: u32,
@@ -186,8 +189,8 @@ pub async fn purchase_map(
     // The server will close the current container and open a new one with incremented ID
     println!("[AH] Waiting for confirm screen to open...");
     
-    // Convert timeout from milliseconds to ticks (1 tick = 50ms)
-    let timeout_ticks = config.window_timeout / 50;
+    // Convert timeout from milliseconds to ticks
+    let timeout_ticks = config.window_timeout / MS_PER_TICK;
     
     match bot.wait_for_container_open(Some(timeout_ticks as usize)).await {
         Some(confirm_container) => {
@@ -203,7 +206,9 @@ pub async fn purchase_map(
             println!("[AH] Clicking confirm button (slot 15) in container ID {}...", confirm_container_id);
             confirm_container.left_click(15_usize);
             
-            // Don't forget the container handle so it doesn't close automatically
+            // Keep the container handle alive without closing it
+            // We use forget() here because Azalea will close the container when handle is dropped,
+            // but the server may need time to process the purchase before we close it
             std::mem::forget(confirm_container);
             
             // Step 4: Wait for the window to close and purchase to complete

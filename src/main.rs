@@ -1,6 +1,6 @@
 use azalea::prelude::*;
 use parking_lot::Mutex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -206,9 +206,11 @@ async fn run_cycle(bot: Client, state: BotState) -> Result<bool> {
                         println!("[CYCLE] Inventory snapshot: {} map(s) after purchase", maps_after.len());
                         
                         // Find slots that have maps now but didn't before
+                        // Use HashSet for O(n) complexity instead of O(n²)
+                        let maps_before_set: HashSet<usize> = maps_before.into_iter().collect();
                         let new_map_slots: Vec<usize> = maps_after
                             .into_iter()
-                            .filter(|slot| !maps_before.contains(slot))
+                            .filter(|slot| !maps_before_set.contains(slot))
                             .collect();
                         
                         if !new_map_slots.is_empty() {
