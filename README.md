@@ -29,7 +29,7 @@ This project is available in two implementations:
 - **Mature implementation** with all features working
 - **Easy to modify** and understand
 - **Node.js based** - cross-platform
-- **Get started**: Clone repository and run with Node.js
+- **Get started**: See "Option 2: Run Node.js Version from Source" below
 
 ---
 
