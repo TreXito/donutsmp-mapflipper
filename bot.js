@@ -87,6 +87,9 @@ const MIN_RETRY_DELAY = 3000; // Minimum delay before retry after errors (ms)
 const REDUCED_CYCLE_DELAY = 2500; // Fast cycle delay when no maps found or purchase failed (ms)
 const CLICK_CONFIRM_DELAY = 400; // Delay between clicking item and confirm button (ms)
 const REFRESH_WAIT_DELAY = 500; // Delay after clicking refresh button (ms)
+const WINDOW_CLOSE_TIMEOUT = 3000; // Timeout waiting for window to close (ms)
+const WINDOW_CLEANUP_DELAY = 300; // Delay after closing window for cleanup (ms)
+const REFRESH_BUTTON_SLOT = 49; // Slot containing the refresh button (anvil icon) in AH window
 
 let bot;
 let isAfkDetected = false;
@@ -607,12 +610,14 @@ async function listMaps() {
     // Step 3: Wait for confirmation window to open
     try {
       const confirmWindow = await new Promise((resolve, reject) => {
+        let timeout; // Declare early before usage
+        
         const windowHandler = (window) => {
           clearTimeout(timeout);
           resolve(window);
         };
         
-        const timeout = setTimeout(() => {
+        timeout = setTimeout(() => {
           bot.off('windowOpen', windowHandler);
           reject(new Error('Timeout waiting for listing confirmation window'));
         }, CONFIG.windowTimeout);
@@ -641,7 +646,7 @@ async function listMaps() {
           bot.off('windowClose', closeHandler);
           console.log('[LISTING] Window did not close in time, continuing...');
           resolve();
-        }, 3000);
+        }, WINDOW_CLOSE_TIMEOUT);
         
         bot.once('windowClose', () => {
           clearTimeout(timeout);
@@ -655,7 +660,7 @@ async function listMaps() {
       if (bot.currentWindow) {
         try {
           bot.closeWindow(bot.currentWindow);
-          await sleep(300);
+          await sleep(WINDOW_CLEANUP_DELAY);
         } catch (e) {
           // Ignore close errors
         }
@@ -693,9 +698,9 @@ async function mainLoop() {
       // No cheap maps - use refresh button instead of reopening
       console.log('[AH] No cheap maps found, refreshing...');
       try {
-        // Click refresh button at slot 49 (the anvil)
-        console.log('[AH] Clicking refresh button (slot 49)...');
-        clickWindowSlot(window.id, 49, 0, 0);
+        // Click refresh button (anvil icon in AH window)
+        console.log(`[AH] Clicking refresh button (slot ${REFRESH_BUTTON_SLOT})...`);
+        clickWindowSlot(window.id, REFRESH_BUTTON_SLOT, 0, 0);
         await sleep(REFRESH_WAIT_DELAY); // Wait for refresh to complete
         
         // Check again after refresh
@@ -757,7 +762,7 @@ async function mainLoop() {
         console.log('[AH] Warning: Window still open after purchase, closing manually');
         try {
           bot.closeWindow(bot.currentWindow);
-          await sleep(300);
+          await sleep(WINDOW_CLEANUP_DELAY);
         } catch (e) {
           console.log('[AH] Error closing window:', e.message);
         }
@@ -778,7 +783,7 @@ async function mainLoop() {
         console.log('[AH] Closing window after failed purchase');
         try {
           bot.closeWindow(bot.currentWindow);
-          await sleep(300);
+          await sleep(WINDOW_CLEANUP_DELAY);
         } catch (e) {
           console.log('[AH] Window already closed');
         }
