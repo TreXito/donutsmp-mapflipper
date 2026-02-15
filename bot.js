@@ -90,6 +90,7 @@ const REFRESH_WAIT_DELAY = 500; // Delay after clicking refresh button (ms)
 const WINDOW_CLOSE_TIMEOUT = 3000; // Timeout waiting for window to close (ms)
 const WINDOW_CLEANUP_DELAY = 300; // Delay after closing window for cleanup (ms)
 const REFRESH_BUTTON_SLOT = 49; // Slot containing the refresh button (anvil icon) in AH window
+const MAX_LISTING_ITERATIONS = 50; // Maximum iterations in listMaps to prevent infinite loops
 
 let bot;
 let isAfkDetected = false;
@@ -591,11 +592,10 @@ async function listMaps() {
   
   let listedCount = 0;
   let iterations = 0;
-  const maxIterations = 50; // Safety limit to prevent infinite loops
   const failedSlots = new Set(); // Track slots that failed to prevent infinite retries
   
   // Keep listing until no more maps are found
-  while (iterations < maxIterations) {
+  while (iterations < MAX_LISTING_ITERATIONS) {
     iterations++;
     
     // Find ALL maps in the entire inventory (not just hotbar)
@@ -603,6 +603,7 @@ async function listMaps() {
     const allMapItems = [];
     
     // Scan all inventory slots for maps
+    // Note: In Minecraft, map items are 'filled_map' or 'map', both contain 'map' substring
     for (let slot = 0; slot < inventory.slots.length; slot++) {
       const item = inventory.slots[slot];
       // Skip slots that have failed before
@@ -634,6 +635,7 @@ async function listMaps() {
     if (slot !== hotbarSlotIndex) {
       try {
         // Move the map to hotbar slot 0
+        // Note: moveSlotItem swaps items if destination is occupied, preventing item loss
         console.log(`[LISTING] Moving map from slot ${slot} to hotbar slot ${hotbarSlot}...`);
         await bot.moveSlotItem(slot, hotbarSlotIndex);
         await sleep(200);
@@ -721,8 +723,8 @@ async function listMaps() {
     }
   }
   
-  if (iterations >= maxIterations) {
-    console.log(`[LISTING] Reached maximum iterations (${maxIterations}), stopping to prevent infinite loop`);
+  if (iterations >= MAX_LISTING_ITERATIONS) {
+    console.log(`[LISTING] Reached maximum iterations (${MAX_LISTING_ITERATIONS}), stopping to prevent infinite loop`);
   }
   
   if (listedCount > 0) {
