@@ -276,8 +276,8 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                     if item_name.to_lowercase().contains("map") {
                         println!("[LISTING] Listing map from slot {} at ${}...", slot_idx, config.sell_price);
                         
-                        // Send /ah sell command
-                        bot.chat(&format!("/ah sell {}", config.sell_price));
+                        // Send /ah list command
+                        bot.chat(&format!("/ah list {}", config.sell_price));
                         
                         // Wait between listings to avoid spam
                         sleep(Duration::from_millis(500)).await;
