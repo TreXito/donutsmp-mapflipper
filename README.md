@@ -18,20 +18,18 @@ A Minecraft bot that automates buying cheap maps from the auction house on donut
 
 This project is available in two implementations:
 
-### 📦 **JavaScript/Mineflayer Version (RECOMMENDED)**
-- **Status**: ✅ **FULLY FUNCTIONAL** - Use this!
+### 🦀 **Rust/Azalea Version (RECOMMENDED)**
+- **Status**: ✅ **PRODUCTION READY** - Pre-built releases available!
+- **Performance**: Fast, efficient, and resource-light
+- **No dependencies**: Statically linked binaries
+- **Get started**: Download from [Releases](https://github.com/TreXito/donutsmp-mapflipper/releases)
+
+### 📦 **JavaScript/Mineflayer Version**
+- **Status**: ✅ **FULLY FUNCTIONAL** - Available in source
 - **Mature implementation** with all features working
 - **Easy to modify** and understand
 - **Node.js based** - cross-platform
-- **Get started**: See [QUICKSTART.md](QUICKSTART.md)
-
-### 🦀 **Rust/Azalea Version**
-- **Status**: ✅ **60% COMPLETE** - Structure done, APIs needed
-- **What works**: Auth, config, webhooks, chat, full code structure
-- **What's missing**: Azalea API calls (18-24h work)
-- **Code quality**: Compiles ✅, documented ✅, implementation-ready ✅
-- **Get details**: See [COMPLETION-SUMMARY.md](COMPLETION-SUMMARY.md)
-- **Complete it**: See [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md)
+- **Get started**: Clone repository and run with Node.js
 
 ---
 
@@ -50,7 +48,7 @@ A Mineflayer bot for flipping maps on DonutSMP auction house.
 - ✅ Microsoft authentication support
 - ✅ Discord webhook notifications for purchases, sales, and events
 - ✅ Partial packet error suppression
-- ✅ Automated unified releases for Windows, Linux, and Mac (includes both Node.js and Rust versions)
+- ✅ Automated Rust releases for Windows, Linux, and macOS (x86_64 and ARM64)
 
 ## Requirements
 
@@ -63,23 +61,35 @@ A Mineflayer bot for flipping maps on DonutSMP auction house.
 
 1. Go to the [Releases](https://github.com/TreXito/donutsmp-mapflipper/releases) page
 2. Download the latest release for your operating system:
-   - **Node.js Version (Recommended)**:
-     - **Windows**: `donutsmp-mapflipper-nodejs-vX.X.X-windows.zip`
-     - **Linux**: `donutsmp-mapflipper-nodejs-vX.X.X-linux.tar.gz`
-     - **Mac**: `donutsmp-mapflipper-nodejs-vX.X.X-mac.tar.gz`
-   - **Rust Version (Experimental)**: See release notes for Rust binaries
+   - **Rust Version (Production Ready)**:
+     - **Linux (x86_64)**: `donutsmp-mapflipper-rust-vX.X.X-linux-x86_64.tar.gz`
+     - **Windows (x86_64)**: `donutsmp-mapflipper-rust-vX.X.X-windows-x86_64.zip`
+     - **macOS (Intel)**: `donutsmp-mapflipper-rust-vX.X.X-macos-x86_64.tar.gz`
+     - **macOS (Apple Silicon)**: `donutsmp-mapflipper-rust-vX.X.X-macos-aarch64.tar.gz`
 3. Extract the archive
-4. Copy `config.template.json` to `config.json` and configure your settings
+4. Edit `config.json` with your settings (Microsoft email for auth)
 5. Run the bot:
-   - **Windows**: Double-click `start.bat` or run `node bot.js`
-   - **Linux/Mac**: Run `./start.sh` or `node bot.js`
+   - **Linux/Mac**: `./donutsmp-mapflipper`
+   - **Windows**: `donutsmp-mapflipper.exe`
 
-### Option 2: Clone from Source
+### Option 2: Run Node.js Version from Source
+
+The Node.js version is still available in the repository for development:
 
 ```bash
 git clone https://github.com/TreXito/donutsmp-mapflipper.git
 cd donutsmp-mapflipper
 npm install
+npm start
+```
+
+### Option 3: Build Rust Version from Source
+
+```bash
+git clone https://github.com/TreXito/donutsmp-mapflipper.git
+cd donutsmp-mapflipper
+cargo build --release
+./target/release/donutsmp-mapflipper
 ```
 
 ## Installation
@@ -358,24 +368,25 @@ The bot automatically suppresses harmless "Chunk size is X but only Y was read" 
 
 ### Automated Releases
 
-This project uses GitHub Actions to automatically create releases for Windows, Linux, and Mac whenever a pull request is merged to the main branch. Each release includes:
+This project uses GitHub Actions to automatically create Rust releases for Windows, Linux, and macOS (both Intel and Apple Silicon) whenever a pull request is merged to the main branch. Each release includes:
 
-- Pre-installed dependencies (`node_modules`)
-- Platform-specific start scripts (`start.bat` for Windows, `start.sh` for Linux/Mac)
-- All necessary configuration files
+- Pre-compiled Rust binaries (statically linked)
+- Configuration file template
 - Complete documentation
+
+The Node.js version is still available in the repository for development and can be run from source.
 
 ### Creating a Manual Release
 
 Repository maintainers can create a release manually:
 
 1. Go to the **Actions** tab in GitHub
-2. Select the **Release** workflow
+2. Select the **Rust Release** workflow
 3. Click **Run workflow**
 4. Enter the desired version tag (e.g., `v1.0.0`)
 5. Click **Run workflow**
 
-The workflow will build and publish releases for all three platforms automatically.
+The workflow will build and publish Rust releases for all four platforms (Linux x86_64, Windows x86_64, macOS x86_64, and macOS ARM64) automatically.
 
 ## License
 
