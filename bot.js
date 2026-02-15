@@ -32,6 +32,7 @@ const CONFIG = {
   webhook: fileConfig.webhook || {
     enabled: false,
     url: '',
+    displayName: 'DonutSMP Map Flipper',
     events: {
       purchase: true,
       listing: true,
@@ -106,7 +107,7 @@ async function sendWebhook(event, data) {
   try {
     const url = new URL(CONFIG.webhook.url);
     const payload = JSON.stringify({
-      username: 'DonutSMP Map Flipper',
+      username: CONFIG.webhook.displayName || 'DonutSMP Map Flipper',
       embeds: [{
         title: `${event.charAt(0).toUpperCase() + event.slice(1)} Event`,
         description: data.message,
@@ -592,9 +593,9 @@ function createBot() {
     // Check for map sale - format: "Username bought your Map for $price"
     // Expected message format examples:
     //   "PlayerName bought your Map for $9.9K"
-    //   "TestUser bought your Map for $9900"
+    //   "Test User bought your Map for $9900"  (usernames can have spaces)
     //   "SomeGuy123 bought your Map for $10,000"
-    const saleMatch = msg.match(/(.+?)\s+bought your Map for \$([0-9,.]+)(K?)/i);
+    const saleMatch = msg.match(/(.+)\s+bought your Map for \$([0-9,.]+)(K?)/i);
     if (saleMatch) {
       const buyer = saleMatch[1].trim();
       const priceStr = `Price: $${saleMatch[2]}${saleMatch[3] || ''}`;

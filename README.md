@@ -51,6 +51,7 @@ The bot can be configured in two ways:
      "webhook": {
        "enabled": false,
        "url": "",
+       "displayName": "DonutSMP Map Flipper",
        "events": {
          "purchase": true,
          "listing": true,
@@ -89,6 +90,7 @@ Set environment variables to override defaults:
 - `webhook`: Webhook configuration for Discord notifications
   - `enabled`: Enable webhook notifications (default: false)
   - `url`: Discord webhook URL
+  - `displayName`: Bot display name in Discord (default: 'DonutSMP Map Flipper')
   - `events`: Control which events trigger notifications
     - `purchase`: Notify when bot buys a map
     - `listing`: Notify when bot lists maps for sale
@@ -113,6 +115,7 @@ To receive Discord notifications for bot events:
      "webhook": {
        "enabled": true,
        "url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_URL",
+       "displayName": "DonutSMP Map Flipper",
        "events": {
          "purchase": true,
          "listing": true,

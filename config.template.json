@@ -11,6 +11,7 @@
   "webhook": {
     "enabled": false,
     "url": "",
+    "displayName": "DonutSMP Map Flipper",
     "events": {
       "purchase": true,
       "listing": true,
