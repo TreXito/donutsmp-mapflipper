@@ -410,6 +410,14 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
     // Wait for the window to close naturally and check for "already bought" message
     return new Promise((resolve) => {
       let alreadyBoughtMessageReceived = false;
+      let resolved = false; // Track if promise has been resolved to prevent double resolution
+      
+      const safeResolve = (value) => {
+        if (!resolved) {
+          resolved = true;
+          resolve(value);
+        }
+      };
       
       const sendSuccessWebhook = () => {
         sendWebhook('purchase', {
@@ -431,11 +439,11 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
           clearTimeout(timeout);
           bot.off('messagestr', messageHandler);
           sendSuccessWebhook();
-          resolve(true);
+          safeResolve(true);
         } else {
           // Window closed after already bought message - this is a failed purchase
           console.log('[AH] Window closed after "already bought" message');
-          resolve(false);
+          safeResolve(false);
         }
       };
       
@@ -452,10 +460,10 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
           console.log('[AH] Warning: Window did not close in time - uncertain purchase state');
           console.log('[AH] Attempting to verify by checking inventory...');
           // Resolve as failed to trigger retry logic - safer than assuming success
-          resolve(false);
+          safeResolve(false);
         } else {
           // Already bought message received, definitely failed
-          resolve(false);
+          safeResolve(false);
         }
       }, 3000);
       
@@ -467,7 +475,7 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
           clearTimeout(timeout);
           bot.off('windowClose', windowCloseHandler);
           bot.off('messagestr', messageHandler);
-          resolve(false);
+          safeResolve(false);
         }
       };
       
@@ -486,10 +494,16 @@ async function unstackMaps() {
   const inventory = bot.inventory;
   
   // Use inventory.items() to get only valid items (safer than iterating all slots)
+  // Map to include slot indices for efficient logging
   const items = inventory.items();
-  const stackedMaps = items.filter(item => 
-    item.name && item.name.includes('map') && item.count > 1
-  );
+  const stackedMaps = [];
+  
+  for (const item of items) {
+    if (item.name && item.name.includes('map') && item.count > 1) {
+      const slotIndex = inventory.slots.indexOf(item);
+      stackedMaps.push({ item, slotIndex });
+    }
+  }
   
   if (stackedMaps.length === 0) {
     console.log('[INVENTORY] No stacked maps found, skipping unstack');
@@ -497,12 +511,12 @@ async function unstackMaps() {
   }
   
   console.log(`[INVENTORY] Found ${stackedMaps.length} stacked map(s)`);
-  for (const stack of stackedMaps) {
-    console.log(`[INVENTORY]   - ${stack.count} maps in slot ${inventory.slots.indexOf(stack)}`);
+  for (const { item, slotIndex } of stackedMaps) {
+    console.log(`[INVENTORY]   - ${item.count} maps in slot ${slotIndex}`);
   }
   
-  console.log('[INVENTORY] Note: Map unstacking requires opening inventory window');
-  console.log('[INVENTORY] If maps come as single items from AH, this step can be skipped');
+  // Note: Unstacking would require opening the inventory window via GUI interaction
+  // Maps from the auction house typically come as single items, so this is rarely needed
   console.log('[INVENTORY] Skipping unstack - maps should already be single items from AH');
 }
 
