@@ -15,7 +15,7 @@ mod inventory;
 use config::Config;
 use price_parser::parse_price;
 use webhook::send_webhook;
-use inventory::{open_auction_house, find_cheap_maps, purchase_map, list_maps};
+use inventory::{open_auction_house, find_cheap_maps, purchase_map, list_maps, get_map_slots};
 
 #[derive(Clone, Component)]
 pub struct BotState {
@@ -171,8 +171,6 @@ async fn run_cycle(bot: Client, state: BotState) -> Result<bool> {
     println!("[CYCLE] Starting new cycle");
     
     // Step 1: Open auction house
-    println!("[AH] Opening auction house...");
-    
     match open_auction_house(&bot, &state.config).await {
         Ok(Some(menu)) => {
             println!("[AH] Auction house opened successfully");
@@ -180,6 +178,10 @@ async fn run_cycle(bot: Client, state: BotState) -> Result<bool> {
             // Step 2: Find cheap maps
             if let Some(map) = find_cheap_maps(&menu, state.config.max_buy_price) {
                 println!("[AH] Found cheap map: ${} from {}", map.price, map.seller);
+                
+                // Track which inventory slots have maps BEFORE purchase
+                let maps_before = get_map_slots(&bot);
+                println!("[CYCLE] Inventory snapshot: {} map(s) before purchase", maps_before.len());
                 
                 // Step 3: Attempt purchase
                 match purchase_map(&bot, &map, &state.config).await {
@@ -198,9 +200,24 @@ async fn run_cycle(bot: Client, state: BotState) -> Result<bool> {
                             ],
                         ).await;
                         
-                        // Step 4: List the purchased map
-                        if let Err(e) = list_maps(&bot, &state.config).await {
-                            eprintln!("[LISTING] Error listing maps: {}", e);
+                        // Step 4: List only NEWLY purchased maps
+                        // Get current inventory state
+                        let maps_after = get_map_slots(&bot);
+                        println!("[CYCLE] Inventory snapshot: {} map(s) after purchase", maps_after.len());
+                        
+                        // Find slots that have maps now but didn't before
+                        let new_map_slots: Vec<usize> = maps_after
+                            .into_iter()
+                            .filter(|slot| !maps_before.contains(slot))
+                            .collect();
+                        
+                        if !new_map_slots.is_empty() {
+                            println!("[CYCLE] Found {} new map(s) to list", new_map_slots.len());
+                            if let Err(e) = list_maps(&bot, &state.config, &new_map_slots).await {
+                                eprintln!("[LISTING] Error listing maps: {}", e);
+                            }
+                        } else {
+                            println!("[CYCLE] No new maps detected - purchase may have failed");
                         }
                         
                         return Ok(true);

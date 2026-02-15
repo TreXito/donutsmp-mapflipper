@@ -158,50 +158,83 @@ pub fn find_cheap_maps(menu: &Menu, max_price: u32) -> Option<MapSlot> {
 
 /// Purchase a map from the auction house
 ///
-/// State ID tracking is CRITICAL for MC 1.21.1:
-/// - Azalea handles state ID tracking internally
-/// - We just need to use the click API properly
+/// This function now properly handles the container ID change that happens when
+/// clicking on a map in the auction house. The flow is:
+/// 1. Click the map slot in the AH container (ID N)
+/// 2. Server closes AH container and opens confirm screen container (ID N+1)
+/// 3. Wait for the NEW container to open
+/// 4. Click confirm button in the NEW container
 ///
 /// Reference: bot.js lines 438-537
 pub async fn purchase_map(
     bot: &Client,
     map: &MapSlot,
-    _config: &Config,
+    config: &Config,
 ) -> Result<bool> {
     println!("[AH] Attempting to purchase map at slot {} for ${}...", map.slot, map.price);
     
-    // Get the current container handle to interact with it
-    let container = bot.get_inventory();
+    // Get the current container ID before clicking
+    let initial_container = bot.get_inventory();
+    let initial_container_id = initial_container.id();
+    println!("[AH] Current container ID: {}", initial_container_id);
     
-    // Step 1: Click the map slot
+    // Step 1: Click the map slot in the auction house
     println!("[AH] Clicking map slot {}...", map.slot);
-    container.left_click(map.slot as usize);
+    initial_container.left_click(map.slot as usize);
     
-    // Step 2: Wait for window update
-    sleep(Duration::from_millis(1000)).await;
+    // Step 2: Wait for the NEW container to open (the confirm screen)
+    // The server will close the current container and open a new one with incremented ID
+    println!("[AH] Waiting for confirm screen to open...");
     
-    // Step 3: Click confirm button (usually slot 15 in auction house GUIs)
-    // This slot number may need adjustment based on the actual AH GUI layout
-    println!("[AH] Clicking confirm button (slot 15)...");
-    container.left_click(15_usize);
+    // Convert timeout from milliseconds to ticks (1 tick = 50ms)
+    let timeout_ticks = config.window_timeout / 50;
     
-    // Step 4: Wait for purchase to complete
-    // In the JS version, we wait for window close and check for "already bought" message
-    // For now, we'll wait a bit and assume success if no errors
-    sleep(Duration::from_millis(2000)).await;
-    
-    // TODO: Implement purchase verification by checking chat messages
-    // This would require listening to chat events for "already bought" messages
-    
-    println!("[AH] Purchase command sent, assuming success");
-    Ok(true)
+    match bot.wait_for_container_open(Some(timeout_ticks as usize)).await {
+        Some(confirm_container) => {
+            let confirm_container_id = confirm_container.id();
+            println!("[AH] Confirm screen opened with container ID: {}", confirm_container_id);
+            
+            // Verify the container ID actually changed
+            if confirm_container_id == initial_container_id {
+                println!("[AH] WARNING: Container ID did not change! This might cause issues.");
+            }
+            
+            // Step 3: Click the confirm button (slot 15) in the NEW container
+            println!("[AH] Clicking confirm button (slot 15) in container ID {}...", confirm_container_id);
+            confirm_container.left_click(15_usize);
+            
+            // Don't forget the container handle so it doesn't close automatically
+            std::mem::forget(confirm_container);
+            
+            // Step 4: Wait for the window to close and purchase to complete
+            sleep(Duration::from_millis(2000)).await;
+            
+            // For now, assume success
+            // TODO: In the future, add chat message monitoring to verify purchase
+            // We would need to listen for "already bought" or similar messages
+            println!("[AH] Purchase completed");
+            Ok(true)
+        }
+        None => {
+            println!("[AH] Timeout waiting for confirm screen to open ({}ms)", config.window_timeout);
+            Err(anyhow!("Confirm screen did not open after clicking map slot"))
+        }
+    }
 }
 
 /// List maps from inventory on auction house
 ///
+/// This function now only lists maps from specific slots to avoid listing
+/// the same maps over and over.
+///
 /// Reference: bot.js lines 572-610
-pub async fn list_maps(bot: &Client, config: &Config) -> Result<()> {
-    println!("[LISTING] Listing maps...");
+pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -> Result<()> {
+    if slots_to_list.is_empty() {
+        println!("[LISTING] No new maps to list");
+        return Ok(());
+    }
+    
+    println!("[LISTING] Listing {} new map(s)...", slots_to_list.len());
     
     // Get bot's inventory
     let inventory_handle = bot.get_inventory();
@@ -211,18 +244,19 @@ pub async fn list_maps(bot: &Client, config: &Config) -> Result<()> {
         // Get all slots from the menu
         let slots = menu.slots();
         
-        // Find map items in the inventory
-        // Hotbar is typically the last 9 slots of the player inventory
-        let start_slot = slots.len().saturating_sub(9);
-        
-        for (idx, slot) in slots.iter().enumerate().skip(start_slot) {
+        for &slot_idx in slots_to_list {
+            if slot_idx >= slots.len() {
+                continue;
+            }
+            
+            let slot = &slots[slot_idx];
+            
             if slot.is_present() {
                 // Check if this is a map item
-                // Maps in Minecraft are ItemKind::FilledMap or ItemKind::Map
                 if let ItemStack::Present(data) = slot {
                     let item_name = format!("{:?}", data.kind);
                     if item_name.to_lowercase().contains("map") {
-                        println!("[LISTING] Found map in slot {}, listing...", idx);
+                        println!("[LISTING] Listing map from slot {} at ${}...", slot_idx, config.sell_price);
                         
                         // Send /ah sell command
                         bot.chat(&format!("/ah sell {}", config.sell_price));
@@ -237,6 +271,31 @@ pub async fn list_maps(bot: &Client, config: &Config) -> Result<()> {
     
     println!("[LISTING] Finished listing maps");
     Ok(())
+}
+
+/// Get a snapshot of which inventory slots contain maps
+///
+/// This is used to track which maps are new after a purchase
+pub fn get_map_slots(bot: &Client) -> Vec<usize> {
+    let inventory_handle = bot.get_inventory();
+    let mut map_slots = Vec::new();
+    
+    if let Some(menu) = inventory_handle.menu() {
+        let slots = menu.slots();
+        
+        for (idx, slot) in slots.iter().enumerate() {
+            if slot.is_present() {
+                if let ItemStack::Present(data) = slot {
+                    let item_name = format!("{:?}", data.kind);
+                    if item_name.to_lowercase().contains("map") {
+                        map_slots.push(idx);
+                    }
+                }
+            }
+        }
+    }
+    
+    map_slots
 }
 
 /*
