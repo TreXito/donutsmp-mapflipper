@@ -35,7 +35,7 @@ This project is available in two implementations:
 
 ---
 
-## JavaScript/Mineflayer Version
+## JavaScript/Mineflayer Version hgi
 
 A Mineflayer bot for flipping maps on DonutSMP auction house.
 
