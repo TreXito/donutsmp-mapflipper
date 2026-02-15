@@ -610,7 +610,7 @@ async function listMaps() {
     // Step 3: Wait for confirmation window to open
     try {
       const confirmWindow = await new Promise((resolve, reject) => {
-        let timeout; // Declare early before usage
+        let timeout; // Declared before nested function references it
         
         const windowHandler = (window) => {
           clearTimeout(timeout);
@@ -637,19 +637,21 @@ async function listMaps() {
       
       // Step 6: Wait for window to close
       await new Promise((resolve) => {
+        let closeTimeout; // Use distinct name to avoid shadowing
+        
         const closeHandler = () => {
           console.log('[LISTING] Listing confirmed, window closed');
           resolve();
         };
         
-        const timeout = setTimeout(() => {
+        closeTimeout = setTimeout(() => {
           bot.off('windowClose', closeHandler);
           console.log('[LISTING] Window did not close in time, continuing...');
           resolve();
         }, WINDOW_CLOSE_TIMEOUT);
         
         bot.once('windowClose', () => {
-          clearTimeout(timeout);
+          clearTimeout(closeTimeout);
           closeHandler();
         });
       });
@@ -708,6 +710,7 @@ async function mainLoop() {
         
         if (!cheapMap) {
           // Still no cheap maps after refresh - close and wait
+          console.log(`[AH] No cheap maps found under $${CONFIG.maxBuyPrice} after refresh`);
           if (bot.currentWindow) {
             bot.closeWindow(bot.currentWindow);
           }
