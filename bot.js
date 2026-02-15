@@ -675,15 +675,12 @@ async function listMaps() {
       
       console.log(`[LISTING] Confirmation window opened (window ID: ${confirmWindow.id})`);
       
-      // Step 5: Click slot 0 to select the item
-      clickWindowSlot(confirmWindow.id, 0, 0, 0);
-      await sleep(CLICK_CONFIRM_DELAY); // Wait for confirm button to appear
-      
-      // Step 6: Click confirm button at slot 15
+      // Item is already selected in the window because it's held in hotbar
+      // Just click the confirm button at slot 15
       console.log('[LISTING] Clicking confirm button at slot 15...');
       clickWindowSlot(confirmWindow.id, 15, 0, 0);
       
-      // Step 7: Wait for window to close
+      // Step 5: Wait for window to close
       await new Promise((resolve) => {
         let closeTimeout;
         
