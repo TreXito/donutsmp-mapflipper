@@ -22,6 +22,7 @@ const CONFIG = {
   host: fileConfig.host || 'donutsmp.net',
   port: fileConfig.port || 25565,
   username: fileConfig.username || process.env.BOT_USERNAME || 'BOT_USERNAME',
+  auth: fileConfig.auth || process.env.BOT_AUTH || 'microsoft',
   version: fileConfig.version || '1.21.11',
   maxBuyPrice: fileConfig.maxBuyPrice || parseInt(process.env.MAX_BUY_PRICE) || 5000,
   sellPrice: fileConfig.sellPrice || process.env.SELL_PRICE || '9.9k',
@@ -401,12 +402,22 @@ async function mainLoop() {
 function createBot() {
   console.log('[BOT] Creating bot...');
   
-  bot = mineflayer.createBot({
+  const botOptions = {
     host: CONFIG.host,
     port: CONFIG.port,
     username: CONFIG.username,
     version: CONFIG.version,
-  });
+  };
+  
+  // Add auth if specified (microsoft or offline)
+  if (CONFIG.auth && CONFIG.auth !== 'offline') {
+    botOptions.auth = CONFIG.auth;
+    console.log(`[BOT] Using ${CONFIG.auth} authentication`);
+  } else {
+    console.log('[BOT] Using offline/cracked authentication');
+  }
+  
+  bot = mineflayer.createBot(botOptions);
   
   bot.on('login', () => {
     console.log(`[BOT] Logged in as ${bot.username}`);

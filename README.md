@@ -10,11 +10,12 @@ A Mineflayer bot that automates buying cheap maps from the auction house on donu
 - ✅ Auto-reconnect on disconnect
 - ✅ Map unstacking for bulk listings
 - ✅ Configurable buy/sell prices
+- ✅ Microsoft authentication support
 
 ## Requirements
 
 - Node.js (v16 or higher)
-- Minecraft account credentials
+- Minecraft Java Edition account (Microsoft account required for online servers)
 
 ## Installation
 
@@ -38,7 +39,8 @@ The bot can be configured in two ways:
    {
      "host": "donutsmp.net",
      "port": 25565,
-     "username": "YourMinecraftUsername",
+     "username": "your-email@example.com",
+     "auth": "microsoft",
      "version": "1.21.11",
      "maxBuyPrice": 5000,
      "sellPrice": "9.9k",
@@ -50,7 +52,8 @@ The bot can be configured in two ways:
 ### Option 2: Using Environment Variables
 
 Set environment variables to override defaults:
-- `BOT_USERNAME`: Your Minecraft username
+- `BOT_USERNAME`: Your Minecraft email/username
+- `BOT_AUTH`: Authentication method ('microsoft' or 'offline', default: 'microsoft')
 - `MAX_BUY_PRICE`: Maximum price to buy maps (default: 5000)
 - `SELL_PRICE`: Price to list maps at (default: 9.9k)
 - `DELAY_BETWEEN_CYCLES`: Wait time between auction checks in ms (default: 5000)
@@ -62,12 +65,50 @@ Set environment variables to override defaults:
 
 - `host`: Server address (default: donutsmp.net)
 - `port`: Server port (default: 25565)
-- `username`: Your Minecraft username (required)
+- `username`: Your Minecraft email (for Microsoft auth) or username (for offline)
+- `auth`: Authentication method - `'microsoft'` for Microsoft accounts (default), `'offline'` for cracked servers
 - `version`: Minecraft version (1.21.11)
 - `maxBuyPrice`: Maximum price to buy maps (default: $5000)
 - `sellPrice`: Price to list maps at (default: 9.9k)
 - `delayBetweenCycles`: Wait time between auction checks in ms (default: 5000)
 - `delayAfterJoin`: Wait time after spawning before starting (default: 5000)
+
+## Authentication
+
+### Microsoft Authentication (Default)
+
+For servers requiring online mode (like donutsmp.net), you need Microsoft authentication:
+
+1. Set `"auth": "microsoft"` in config.json (this is the default)
+2. Use your Microsoft account email as the username
+3. **First-time setup**: When you first run the bot, it will display:
+   - A code (e.g., `ABC12345`)
+   - A URL: `https://www.microsoft.com/link`
+4. Open the URL in your browser, enter the code, and sign in with your Microsoft account
+5. The authentication tokens are cached, so you only need to do this once
+
+**Example config.json for Microsoft auth:**
+```json
+{
+  "username": "your-email@example.com",
+  "auth": "microsoft"
+}
+```
+
+### Offline/Cracked Authentication
+
+For offline/cracked servers that don't require authentication:
+
+1. Set `"auth": "offline"` in config.json
+2. Use any username you want
+
+**Example config.json for offline auth:**
+```json
+{
+  "username": "YourUsername",
+  "auth": "offline"
+}
+```
 
 ## Usage
 

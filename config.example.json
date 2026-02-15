@@ -1,7 +1,8 @@
 {
   "host": "donutsmp.net",
   "port": 25565,
-  "username": "BOT_USERNAME",
+  "username": "your-email@example.com",
+  "auth": "microsoft",
   "version": "1.21.11",
   "maxBuyPrice": 5000,
   "sellPrice": "9.9k",
