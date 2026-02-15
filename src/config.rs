@@ -71,6 +71,8 @@ pub struct Config {
     pub max_buy_price: u32,
     #[serde(default = "default_sell_price", rename = "sellPrice")]
     pub sell_price: String,
+    #[serde(default = "default_max_listings_per_cycle", rename = "maxListingsPerCycle")]
+    pub max_listings_per_cycle: u32,
     #[serde(default = "default_delay_between_cycles", rename = "delayBetweenCycles")]
     pub delay_between_cycles: u64,
     #[serde(default = "default_delay_after_join", rename = "delayAfterJoin")]
@@ -108,6 +110,11 @@ impl Config {
             if let Ok(sell) = std::env::var("SELL_PRICE") {
                 config.sell_price = sell;
             }
+            if let Ok(max_listings) = std::env::var("MAX_LISTINGS_PER_CYCLE") {
+                if let Ok(limit) = max_listings.parse() {
+                    config.max_listings_per_cycle = limit;
+                }
+            }
             if let Ok(delay) = std::env::var("DELAY_BETWEEN_CYCLES") {
                 if let Ok(d) = delay.parse() {
                     config.delay_between_cycles = d;
@@ -141,6 +148,10 @@ impl Config {
                 .and_then(|p| p.parse().ok())
                 .unwrap_or_else(default_max_buy_price),
             sell_price: std::env::var("SELL_PRICE").unwrap_or_else(|_| default_sell_price()),
+            max_listings_per_cycle: std::env::var("MAX_LISTINGS_PER_CYCLE")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or_else(default_max_listings_per_cycle),
             delay_between_cycles: std::env::var("DELAY_BETWEEN_CYCLES")
                 .ok()
                 .and_then(|d| d.parse().ok())
@@ -169,6 +180,7 @@ fn default_auth() -> String { "microsoft".to_string() }
 fn default_version() -> String { "1.21.11".to_string() }
 fn default_max_buy_price() -> u32 { 2500 }
 fn default_sell_price() -> String { "9.9k".to_string() }
+fn default_max_listings_per_cycle() -> u32 { 20 }
 fn default_delay_between_cycles() -> u64 { 5000 }
 fn default_delay_after_join() -> u64 { 5000 }
 fn default_window_timeout() -> u64 { 15000 }

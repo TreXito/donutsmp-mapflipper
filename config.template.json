@@ -6,6 +6,7 @@
   "version": "1.21.11",
   "maxBuyPrice": 2500,
   "sellPrice": "9.9k",
+  "maxListingsPerCycle": 20,
   "delayBetweenCycles": 5000,
   "delayAfterJoin": 5000,
   "windowTimeout": 15000,

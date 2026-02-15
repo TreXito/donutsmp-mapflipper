@@ -230,7 +230,7 @@ pub async fn purchase_map(
 /// List maps from inventory on auction house
 ///
 /// This function now only lists maps from specific slots to avoid listing
-/// the same maps over and over.
+/// the same maps over and over. Limits listings to maxListingsPerCycle.
 ///
 /// Reference: bot.js lines 572-610
 pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -> Result<()> {
@@ -239,7 +239,20 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
         return Ok(());
     }
     
-    println!("[LISTING] Listing {} new map(s)...", slots_to_list.len());
+    // Apply the listing limit
+    let max_listings = config.max_listings_per_cycle as usize;
+    let total_available = slots_to_list.len();
+    let slots_to_process: Vec<usize> = slots_to_list.iter()
+        .take(max_listings)
+        .copied()
+        .collect();
+    
+    println!("[LISTING] Listing {} new map(s)...", slots_to_process.len());
+    
+    if total_available > max_listings {
+        println!("[LISTING] Limited to {} maps per cycle (configured max: {}). {} maps will be listed in next cycle.", 
+                 max_listings, config.max_listings_per_cycle, total_available - max_listings);
+    }
     
     // Get bot's inventory
     let inventory_handle = bot.get_inventory();
@@ -249,7 +262,7 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
         // Get all slots from the menu
         let slots = menu.slots();
         
-        for &slot_idx in slots_to_list {
+        for &slot_idx in &slots_to_process {
             if slot_idx >= slots.len() {
                 continue;
             }

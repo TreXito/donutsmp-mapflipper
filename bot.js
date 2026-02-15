@@ -60,6 +60,7 @@ const CONFIG = {
   version: fileConfig.version || '1.21.11',
   maxBuyPrice: fileConfig.maxBuyPrice || parseInt(process.env.MAX_BUY_PRICE) || 2500,
   sellPrice: fileConfig.sellPrice || process.env.SELL_PRICE || '9.9k',
+  maxListingsPerCycle: fileConfig.maxListingsPerCycle || parseInt(process.env.MAX_LISTINGS_PER_CYCLE) || 20,
   delayBetweenCycles: fileConfig.delayBetweenCycles || parseInt(process.env.DELAY_BETWEEN_CYCLES) || 5000,
   delayAfterJoin: fileConfig.delayAfterJoin || parseInt(process.env.DELAY_AFTER_JOIN) || 5000,
   windowTimeout: fileConfig.windowTimeout || parseInt(process.env.WINDOW_TIMEOUT) || 15000,
@@ -83,6 +84,7 @@ const CONFIG = {
 const HOTBAR_START_SLOT = 36;
 const HOTBAR_END_SLOT = 44;
 const WARN_MAP_COUNT_THRESHOLD = 5;
+const MAX_AH_LISTINGS = 27; // Maximum active listings allowed on auction house
 const MIN_RETRY_DELAY = 3000; // Minimum delay before retry after errors (ms)
 const REDUCED_CYCLE_DELAY = 2500; // Fast cycle delay when no maps found or purchase failed (ms)
 const CLICK_CONFIRM_DELAY = 400; // Delay between clicking item and confirm button (ms)
@@ -577,168 +579,177 @@ async function unstackMaps() {
     return;
   }
   
-  console.log(`[INVENTORY] Found ${stackedMaps.length} stacked map(s)`);
+  console.log(`[INVENTORY] Found ${stackedMaps.length} stacked map slot(s)`);
   for (const { item, slotIndex } of stackedMaps) {
     console.log(`[INVENTORY]   - ${item.count} maps in slot ${slotIndex}`);
   }
   
-  // Note: Unstacking would require opening the inventory window via GUI interaction
-  // Maps from the auction house typically come as single items, so this is rarely needed
-  console.log('[INVENTORY] Skipping unstack - maps should already be single items from AH');
+  // Note: Maps from the auction house typically come as single items
+  // If stacked, they'll be split when moved to hotbar for listing
+  console.log('[INVENTORY] Maps will be split during hotbar filling for listing');
 }
 
 async function listMaps() {
   console.log('[LISTING] Listing purchased maps...');
   
-  let listedCount = 0;
-  let iterations = 0;
-  const failedSlots = new Set(); // Track slots that failed to prevent infinite retries
+  let totalListedCount = 0;
+  let batchNumber = 0;
+  const maxBatches = Math.ceil(CONFIG.maxListingsPerCycle / 9); // 9 slots per hotbar
   
-  // Keep listing until no more maps are found
-  while (iterations < MAX_LISTING_ITERATIONS) {
-    iterations++;
+  // Keep listing in batches until we hit the limit or run out of maps
+  while (totalListedCount < CONFIG.maxListingsPerCycle && batchNumber < maxBatches) {
+    batchNumber++;
     
-    // Find ALL maps in the entire inventory (not just hotbar)
+    // Step 1: Find all maps in non-hotbar inventory slots
     const inventory = bot.inventory;
-    const allMapItems = [];
+    const mapsToMove = [];
     
-    // Scan all inventory slots for maps
-    // Note: In Minecraft, map items are 'filled_map' or 'map', both contain 'map' substring
     for (let slot = 0; slot < inventory.slots.length; slot++) {
       const item = inventory.slots[slot];
-      // Skip slots that have failed before
-      if (item && item.name && item.name.includes('map') && !failedSlots.has(slot)) {
-        allMapItems.push({ item, slot });
+      // Skip hotbar slots (36-44) - we'll fill those
+      if (slot >= HOTBAR_START_SLOT && slot <= HOTBAR_END_SLOT) continue;
+      
+      if (item && item.name && item.name.includes('map')) {
+        mapsToMove.push({ item, slot });
       }
     }
     
-    if (allMapItems.length === 0) {
-      console.log(`[LISTING] No more maps to list. Total listed: ${listedCount}`);
+    if (mapsToMove.length === 0) {
+      console.log(`[LISTING] No more maps to list. Total listed: ${totalListedCount}`);
       break;
     }
     
-    console.log(`[LISTING] Found ${allMapItems.length} map(s) in inventory`);
+    console.log(`[LISTING] Batch ${batchNumber}: Found ${mapsToMove.length} map(s) in inventory`);
     
-    // Check if we might hit the 27 slot limit
-    if (allMapItems.length > WARN_MAP_COUNT_THRESHOLD) {
-      console.log('[LISTING] Warning: Listing many maps at once - may hit slot limit');
-    }
+    // Step 2: Fill hotbar with maps (up to 9 slots)
+    const mapsToList = Math.min(9, mapsToMove.length, CONFIG.maxListingsPerCycle - totalListedCount);
+    console.log(`[LISTING] Filling hotbar with ${mapsToList} map(s)...`);
     
-    // Process only the first map, then re-scan
-    const { item, slot } = allMapItems[0];
-    console.log(`[LISTING] Listing map from inventory slot ${slot}...`);
-    
-    // Step 1: Move map to hotbar if not already there
-    let hotbarSlot = 0; // Use first hotbar slot
-    const hotbarSlotIndex = HOTBAR_START_SLOT + hotbarSlot;
-    
-    if (slot !== hotbarSlotIndex) {
+    for (let i = 0; i < mapsToList; i++) {
+      const { slot: sourceSlot } = mapsToMove[i];
+      const hotbarSlot = HOTBAR_START_SLOT + i; // Fill hotbar slots 0-8
+      
       try {
-        // Move the map to hotbar slot 0
-        // Note: moveSlotItem swaps items if destination is occupied, preventing item loss
-        console.log(`[LISTING] Moving map from slot ${slot} to hotbar slot ${hotbarSlot}...`);
-        await bot.moveSlotItem(slot, hotbarSlotIndex);
+        // Move map to hotbar
+        console.log(`[LISTING] Moving map from slot ${sourceSlot} to hotbar slot ${i}...`);
+        await bot.moveSlotItem(sourceSlot, hotbarSlot);
         await sleep(200);
       } catch (error) {
-        console.error(`[LISTING] Error moving map to hotbar:`, error.message);
-        // Mark this slot as failed to prevent infinite retries
-        failedSlots.add(slot);
-        await sleep(500);
+        console.error(`[LISTING] Error moving map to hotbar: ${error.message}`);
+        break;
+      }
+    }
+    
+    // Step 3: List all maps from hotbar
+    console.log(`[LISTING] Listing ${mapsToList} map(s) from hotbar...`);
+    
+    for (let hotbarSlotIndex = 0; hotbarSlotIndex < mapsToList; hotbarSlotIndex++) {
+      if (totalListedCount >= CONFIG.maxListingsPerCycle) {
+        console.log(`[LISTING] Reached maximum listings per cycle (${CONFIG.maxListingsPerCycle})`);
+        break;
+      }
+      
+      const hotbarSlot = HOTBAR_START_SLOT + hotbarSlotIndex;
+      const item = inventory.slots[hotbarSlot];
+      
+      if (!item || !item.name || !item.name.includes('map')) {
+        console.log(`[LISTING] No map in hotbar slot ${hotbarSlotIndex}, skipping...`);
         continue;
       }
-    }
-    
-    // Step 2: Hold the map in hotbar
-    bot.setQuickBarSlot(hotbarSlot);
-    await sleep(200);
-    
-    // Step 3: Send /ah sell command
-    bot.chat(`/ah sell ${CONFIG.sellPrice}`);
-    
-    // Step 4: Wait for confirmation window to open
-    try {
-      const confirmWindow = await new Promise((resolve, reject) => {
-        let timeout;
-        
-        const windowHandler = (window) => {
-          clearTimeout(timeout);
-          resolve(window);
-        };
-        
-        timeout = setTimeout(() => {
-          bot.off('windowOpen', windowHandler);
-          reject(new Error('Timeout waiting for listing confirmation window'));
-        }, CONFIG.windowTimeout);
-        
-        bot.once('windowOpen', windowHandler);
-      });
       
-      console.log(`[LISTING] Confirmation window opened (window ID: ${confirmWindow.id})`);
+      console.log(`[LISTING] Listing map from hotbar slot ${hotbarSlotIndex}...`);
       
-      // Item is already selected in the window because it's held in hotbar
-      // Wait for GUI to fully render before clicking (same timing as buying)
-      await sleep(CLICK_CONFIRM_DELAY);
+      // Hold the map in hotbar
+      bot.setQuickBarSlot(hotbarSlotIndex);
+      await sleep(200);
       
-      // Just click the confirm button at slot 15
-      console.log('[LISTING] Clicking confirm button at slot 15...');
-      clickWindowSlot(confirmWindow.id, 15, 0, 0);
+      // Send /ah sell command
+      bot.chat(`/ah sell ${CONFIG.sellPrice}`);
       
-      // Step 5: Wait for window to close
-      await new Promise((resolve) => {
-        let closeTimeout;
-        
-        const closeHandler = () => {
-          console.log('[LISTING] Listing confirmed, window closed');
-          resolve();
-        };
-        
-        closeTimeout = setTimeout(() => {
-          bot.off('windowClose', closeHandler);
-          console.log('[LISTING] Window did not close in time, continuing...');
-          resolve();
-        }, WINDOW_CLOSE_TIMEOUT);
-        
-        bot.once('windowClose', () => {
-          clearTimeout(closeTimeout);
-          closeHandler();
+      // Wait for confirmation window to open
+      try {
+        const confirmWindow = await new Promise((resolve, reject) => {
+          let timeout;
+          
+          const windowHandler = (window) => {
+            clearTimeout(timeout);
+            resolve(window);
+          };
+          
+          timeout = setTimeout(() => {
+            bot.off('windowOpen', windowHandler);
+            reject(new Error('Timeout waiting for listing confirmation window'));
+          }, CONFIG.windowTimeout);
+          
+          bot.once('windowOpen', windowHandler);
         });
-      });
-      
-      listedCount++;
-      
-    } catch (error) {
-      console.error(`[LISTING] Error listing map from slot ${slot}:`, error.message);
-      // Close any open window to prevent protocol conflicts
-      if (bot.currentWindow) {
-        try {
-          bot.closeWindow(bot.currentWindow);
-          await sleep(WINDOW_CLEANUP_DELAY);
-        } catch (e) {
-          // Ignore close errors
+        
+        console.log(`[LISTING] Confirmation window opened (window ID: ${confirmWindow.id})`);
+        
+        // Wait for GUI to fully render before clicking
+        await sleep(CLICK_CONFIRM_DELAY);
+        
+        // Click the confirm button at slot 15
+        console.log('[LISTING] Clicking confirm button at slot 15...');
+        clickWindowSlot(confirmWindow.id, 15, 0, 0);
+        
+        // Wait for window to close
+        await new Promise((resolve) => {
+          let closeTimeout;
+          
+          const closeHandler = () => {
+            console.log('[LISTING] Listing confirmed, window closed');
+            resolve();
+          };
+          
+          closeTimeout = setTimeout(() => {
+            bot.off('windowClose', closeHandler);
+            console.log('[LISTING] Window did not close in time, continuing...');
+            resolve();
+          }, WINDOW_CLOSE_TIMEOUT);
+          
+          bot.once('windowClose', () => {
+            clearTimeout(closeTimeout);
+            closeHandler();
+          });
+        });
+        
+        totalListedCount++;
+        
+      } catch (error) {
+        console.error(`[LISTING] Error listing map from hotbar slot ${hotbarSlotIndex}: ${error.message}`);
+        // Close any open window to prevent protocol conflicts
+        if (bot.currentWindow) {
+          try {
+            bot.closeWindow(bot.currentWindow);
+            await sleep(WINDOW_CLEANUP_DELAY);
+          } catch (e) {
+            // Ignore close errors
+          }
         }
+        await sleep(500);
       }
-      // Mark this slot as failed to prevent infinite retries
-      failedSlots.add(slot);
-      await sleep(500);
     }
+    
+    console.log(`[LISTING] Batch ${batchNumber} complete. Listed ${totalListedCount} total map(s) so far.`);
   }
   
-  if (iterations >= MAX_LISTING_ITERATIONS) {
-    console.log(`[LISTING] Reached maximum iterations (${MAX_LISTING_ITERATIONS}), stopping to prevent infinite loop`);
+  if (totalListedCount >= CONFIG.maxListingsPerCycle) {
+    console.log(`[LISTING] Hit listing limit (${CONFIG.maxListingsPerCycle} per cycle). Remaining maps will be listed in next cycle.`);
   }
   
-  if (listedCount > 0) {
+  if (totalListedCount > 0) {
     await sendWebhook('listing', {
-      message: `📋 Listed ${listedCount} map(s) for sale`,
+      message: `📋 Listed ${totalListedCount} map(s) for sale`,
       color: 3447003,
       fields: [
-        { name: 'Quantity', value: listedCount.toString(), inline: true },
+        { name: 'Quantity', value: totalListedCount.toString(), inline: true },
         { name: 'Price Each', value: CONFIG.sellPrice, inline: true }
       ]
     });
   }
   
-  console.log(`[LISTING] Successfully listed ${listedCount} map(s)`);
+  console.log(`[LISTING] Successfully listed ${totalListedCount} map(s)`);
 }
 
 async function mainLoop() {
