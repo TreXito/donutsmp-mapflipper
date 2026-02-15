@@ -14,6 +14,7 @@
     "events": {
       "purchase": true,
       "listing": true,
+      "sale": true,
       "afk": true,
       "error": true,
       "startup": true

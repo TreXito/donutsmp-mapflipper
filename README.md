@@ -54,6 +54,7 @@ The bot can be configured in two ways:
        "events": {
          "purchase": true,
          "listing": true,
+         "sale": true,
          "afk": true,
          "error": true,
          "startup": true
@@ -90,7 +91,8 @@ Set environment variables to override defaults:
   - `url`: Discord webhook URL
   - `events`: Control which events trigger notifications
     - `purchase`: Notify when bot buys a map
-    - `listing`: Notify when bot lists maps for sale or when someone buys from bot
+    - `listing`: Notify when bot lists maps for sale
+    - `sale`: Notify when someone buys from bot
     - `afk`: Notify when AFK is detected
     - `error`: Notify on errors and kicks
     - `startup`: Notify when bot connects
@@ -114,6 +116,7 @@ To receive Discord notifications for bot events:
        "events": {
          "purchase": true,
          "listing": true,
+         "sale": true,
          "afk": true,
          "error": true,
          "startup": true
@@ -127,7 +130,8 @@ To receive Discord notifications for bot events:
 ### Webhook Events
 
 - **purchase**: Notifies when the bot buys a map, includes price and seller
-- **listing**: Notifies when the bot lists maps AND when someone buys from the bot
+- **listing**: Notifies when the bot lists maps for sale
+- **sale**: Notifies when someone buys a map from the bot
 - **afk**: Notifies when AFK detection triggers
 - **error**: Notifies on errors and when bot is kicked
 - **startup**: Notifies when bot successfully connects to server

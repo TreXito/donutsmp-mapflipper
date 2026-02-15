@@ -35,6 +35,7 @@ const CONFIG = {
     events: {
       purchase: true,
       listing: true,
+      sale: true,
       afk: true,
       error: true,
       startup: true
@@ -72,6 +73,10 @@ function normalizeText(text) {
 
 function stripMinecraftColors(text) {
   return text.replace(/§[0-9a-fk-or]/gi, '');
+}
+
+function isPartialPacketError(err) {
+  return err && err.message && err.message.includes('partial packet');
 }
 
 function parsePrice(loreString) {
@@ -576,23 +581,18 @@ function createBot() {
     const saleMatch = msg.match(/(.+?)\s+bought your Map for \$([0-9,.]+)(K?)/i);
     if (saleMatch) {
       const buyer = saleMatch[1].trim();
-      const priceStr = saleMatch[2];
-      const multiplier = saleMatch[3];
+      const priceStr = `Price: $${saleMatch[2]}${saleMatch[3] || ''}`;
       
       // Validate captured data before processing
-      if (buyer && priceStr) {
-        let salePrice = parseFloat(priceStr.replace(/,/g, ''));
-        if (isNaN(salePrice)) {
+      if (buyer) {
+        const salePrice = parsePrice(priceStr);
+        if (salePrice === null) {
           console.log('[SALE] Invalid price format, skipping webhook');
           return;
         }
         
-        if (multiplier && multiplier.toUpperCase() === 'K') {
-          salePrice *= 1000;
-        }
-        
         console.log(`[SALE] ${buyer} bought a map for $${salePrice}`);
-        sendWebhook('listing', {
+        sendWebhook('sale', {
           message: `💰 Sold a map!`,
           color: 5763719,
           fields: [
@@ -623,7 +623,7 @@ function createBot() {
   
   bot.on('error', (err) => {
     // Suppress common harmless packet errors
-    if (err.message && err.message.includes('partial packet')) {
+    if (isPartialPacketError(err)) {
       // These are harmless protocol parsing warnings, suppress them
       return;
     }
@@ -644,7 +644,7 @@ function createBot() {
   // changes its internal structure. Tested with mineflayer 4.35.0
   if (bot._client) {
     bot._client.on('error', (err) => {
-      if (err.message && err.message.includes('partial packet')) {
+      if (isPartialPacketError(err)) {
         // Suppress these errors - they're harmless protocol parsing warnings
         return;
       }
