@@ -70,8 +70,12 @@ function normalizeText(text) {
   return normalized.toLowerCase();
 }
 
+function stripMinecraftColors(text) {
+  return text.replace(/§[0-9a-fk-or]/gi, '');
+}
+
 function parsePrice(loreString) {
-  const clean = loreString.replace(/§[0-9a-fk-or]/gi, '');
+  const clean = stripMinecraftColors(loreString);
   const match = clean.match(/Price:\s*\$([0-9,.]+)(K?)/i);
   if (!match) return null;
   
@@ -119,13 +123,21 @@ async function sendWebhook(event, data) {
     };
     
     const req = https.request(options, (res) => {
-      res.on('data', () => {});
-      res.on('end', () => resolve());
+      let responseData = '';
+      res.on('data', (chunk) => { responseData += chunk; });
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve();
+        } else {
+          console.error(`[WEBHOOK] Failed to send webhook (status ${res.statusCode}):`, responseData);
+          resolve(); // Still resolve to not break bot flow
+        }
+      });
     });
     
     req.on('error', (err) => {
       console.error('[WEBHOOK] Error sending webhook:', err.message);
-      resolve();
+      resolve(); // Still resolve to not break bot flow
     });
     
     req.write(payload);
@@ -241,7 +253,7 @@ function findCheapMap(window) {
         
         // Try to find seller name in lore
         if (lineText.includes('Seller:')) {
-          const clean = lineText.replace(/§[0-9a-fk-or]/gi, '');
+          const clean = stripMinecraftColors(lineText);
           const sellerMatch = clean.match(/Seller:\s*(.+)/i);
           if (sellerMatch) {
             seller = sellerMatch[1].trim();
@@ -557,23 +569,38 @@ function createBot() {
     }
     
     // Check for map sale - format: "Username bought your Map for $price"
+    // Expected message format examples:
+    //   "PlayerName bought your Map for $9.9K"
+    //   "TestUser bought your Map for $9900"
+    //   "SomeGuy123 bought your Map for $10,000"
     const saleMatch = msg.match(/(.+?)\s+bought your Map for \$([0-9,.]+)(K?)/i);
     if (saleMatch) {
       const buyer = saleMatch[1].trim();
-      let salePrice = parseFloat(saleMatch[2].replace(/,/g, ''));
-      if (saleMatch[3] && saleMatch[3].toUpperCase() === 'K') {
-        salePrice *= 1000;
-      }
+      const priceStr = saleMatch[2];
+      const multiplier = saleMatch[3];
       
-      console.log(`[SALE] ${buyer} bought a map for $${salePrice}`);
-      sendWebhook('listing', {
-        message: `💰 Sold a map!`,
-        color: 5763719,
-        fields: [
-          { name: 'Buyer', value: buyer, inline: true },
-          { name: 'Price', value: `$${salePrice}`, inline: true }
-        ]
-      });
+      // Validate captured data before processing
+      if (buyer && priceStr) {
+        let salePrice = parseFloat(priceStr.replace(/,/g, ''));
+        if (isNaN(salePrice)) {
+          console.log('[SALE] Invalid price format, skipping webhook');
+          return;
+        }
+        
+        if (multiplier && multiplier.toUpperCase() === 'K') {
+          salePrice *= 1000;
+        }
+        
+        console.log(`[SALE] ${buyer} bought a map for $${salePrice}`);
+        sendWebhook('listing', {
+          message: `💰 Sold a map!`,
+          color: 5763719,
+          fields: [
+            { name: 'Buyer', value: buyer, inline: true },
+            { name: 'Price', value: `$${salePrice}`, inline: true }
+          ]
+        });
+      }
     }
   });
   
@@ -612,10 +639,13 @@ function createBot() {
   });
   
   // Suppress packet_dump errors for partial packets
+  // Note: This accesses mineflayer's internal _client property as a workaround
+  // for suppressing harmless partial packet warnings. This may break if mineflayer
+  // changes its internal structure. Tested with mineflayer 4.35.0
   if (bot._client) {
     bot._client.on('error', (err) => {
       if (err.message && err.message.includes('partial packet')) {
-        // Suppress these errors - they're harmless
+        // Suppress these errors - they're harmless protocol parsing warnings
         return;
       }
       console.error('[CLIENT] Error:', err);
