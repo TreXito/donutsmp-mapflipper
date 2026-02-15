@@ -3,6 +3,20 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
+// Suppress partial packet errors from minecraft-protocol
+const originalConsoleError = console.error;
+console.error = function(...args) {
+  const message = args.join(' ');
+  // Filter out partial packet errors which are harmless protocol parsing warnings
+  // These are very specific to minecraft-protocol's packet parser
+  if ((message.includes('partial packet') && message.includes('Chunk size is')) ||
+      (message.includes('Chunk size is') && message.includes('but only') && message.includes('was read'))) {
+    return;
+  }
+  originalConsoleError.apply(console, args);
+};
+
+
 // Load configuration from config.json if it exists
 let fileConfig = {};
 const configPath = path.join(__dirname, 'config.json');
@@ -25,7 +39,7 @@ const CONFIG = {
   username: fileConfig.username || process.env.BOT_USERNAME || 'BOT_USERNAME',
   auth: fileConfig.auth || process.env.BOT_AUTH || 'microsoft',
   version: fileConfig.version || '1.21.11',
-  maxBuyPrice: fileConfig.maxBuyPrice || parseInt(process.env.MAX_BUY_PRICE) || 5000,
+  maxBuyPrice: fileConfig.maxBuyPrice || parseInt(process.env.MAX_BUY_PRICE) || 2500,
   sellPrice: fileConfig.sellPrice || process.env.SELL_PRICE || '9.9k',
   delayBetweenCycles: fileConfig.delayBetweenCycles || parseInt(process.env.DELAY_BETWEEN_CYCLES) || 5000,
   delayAfterJoin: fileConfig.delayAfterJoin || parseInt(process.env.DELAY_AFTER_JOIN) || 5000,
