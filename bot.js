@@ -589,33 +589,36 @@ async function unstackMaps() {
 async function listMaps() {
   console.log('[LISTING] Listing purchased maps...');
   
-  // Find ALL maps in the entire inventory (not just hotbar)
-  const inventory = bot.inventory;
-  const allMapItems = [];
-  
-  // Scan all inventory slots for maps
-  for (let slot = 0; slot < inventory.slots.length; slot++) {
-    const item = inventory.slots[slot];
-    if (item && item.name && item.name.includes('map')) {
-      allMapItems.push({ item, slot });
-    }
-  }
-  
-  console.log(`[LISTING] Found ${allMapItems.length} map(s) in inventory`);
-  
-  if (allMapItems.length === 0) {
-    console.log('[LISTING] No maps to list');
-    return;
-  }
-  
-  // Check if we might hit the 27 slot limit
-  if (allMapItems.length > WARN_MAP_COUNT_THRESHOLD) {
-    console.log('[LISTING] Warning: Listing many maps at once - may hit slot limit');
-  }
-  
   let listedCount = 0;
   
-  for (const { item, slot } of allMapItems) {
+  // Keep listing until no more maps are found
+  while (true) {
+    // Find ALL maps in the entire inventory (not just hotbar)
+    const inventory = bot.inventory;
+    const allMapItems = [];
+    
+    // Scan all inventory slots for maps
+    for (let slot = 0; slot < inventory.slots.length; slot++) {
+      const item = inventory.slots[slot];
+      if (item && item.name && item.name.includes('map')) {
+        allMapItems.push({ item, slot });
+      }
+    }
+    
+    if (allMapItems.length === 0) {
+      console.log(`[LISTING] No more maps to list. Total listed: ${listedCount}`);
+      break;
+    }
+    
+    console.log(`[LISTING] Found ${allMapItems.length} map(s) in inventory`);
+    
+    // Check if we might hit the 27 slot limit
+    if (allMapItems.length > WARN_MAP_COUNT_THRESHOLD) {
+      console.log('[LISTING] Warning: Listing many maps at once - may hit slot limit');
+    }
+    
+    // Process only the first map, then re-scan
+    const { item, slot } = allMapItems[0];
     console.log(`[LISTING] Listing map from inventory slot ${slot}...`);
     
     // Step 1: Move map to hotbar if not already there
@@ -630,6 +633,8 @@ async function listMaps() {
         await sleep(200);
       } catch (error) {
         console.error(`[LISTING] Error moving map to hotbar:`, error.message);
+        // If we can't move it, skip this iteration and try again
+        await sleep(500);
         continue;
       }
     }
@@ -703,6 +708,8 @@ async function listMaps() {
           // Ignore close errors
         }
       }
+      // Don't break the loop, try the next map
+      await sleep(500);
     }
   }
   
