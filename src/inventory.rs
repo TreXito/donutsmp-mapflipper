@@ -72,8 +72,8 @@ pub async fn open_auction_house(bot: &Client, config: &Config) -> Result<Option<
     // Wait for protocol timing (300ms to prevent "Invalid sequence" kick)
     sleep(Duration::from_millis(300)).await;
     
-    // Wait for container to open with timeout (convert ms to ticks: ms/50)
-    let timeout_ticks = config.window_timeout / 50;
+    // Wait for container to open with timeout (convert ms to ticks: ms/50, round up)
+    let timeout_ticks = (config.window_timeout + MS_PER_TICK - 1) / MS_PER_TICK;
     
     println!("[AH] Waiting for auction house window to open (timeout: {}ms)...", config.window_timeout);
     
@@ -189,8 +189,8 @@ pub async fn purchase_map(
     // The server will close the current container and open a new one with incremented ID
     println!("[AH] Waiting for confirm screen to open...");
     
-    // Convert timeout from milliseconds to ticks
-    let timeout_ticks = config.window_timeout / MS_PER_TICK;
+    // Convert timeout from milliseconds to ticks (round up to ensure we wait long enough)
+    let timeout_ticks = (config.window_timeout + MS_PER_TICK - 1) / MS_PER_TICK;
     
     match bot.wait_for_container_open(Some(timeout_ticks as usize)).await {
         Some(confirm_container) => {
