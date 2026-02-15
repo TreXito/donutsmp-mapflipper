@@ -8,6 +8,8 @@ A Minecraft bot that automates buying cheap maps from the auction house on donut
 
 **Wondering what works?** → [STATUS.md](STATUS.md)
 
+**Want to complete Rust version?** → [COMPLETION-SUMMARY.md](COMPLETION-SUMMARY.md) ⭐ NEW
+
 **Check your system:** Run `./check-system.sh`
 
 ---
@@ -24,12 +26,12 @@ This project is available in two implementations:
 - **Get started**: See [QUICKSTART.md](QUICKSTART.md)
 
 ### 🦀 **Rust/Azalea Version**
-- **Status**: ⚠️ **INCOMPLETE** (~40% done) - Don't use yet
-- **Better performance** when complete
-- **Type safety** and memory efficiency  
-- **Missing**: Auction house interaction, purchasing, listing
-- **See**: [README-RUST.md](README-RUST.md) for Rust-specific documentation
-- **Complete it**: See [RUST-TODO.md](RUST-TODO.md) for what's needed
+- **Status**: ✅ **60% COMPLETE** - Structure done, APIs needed
+- **What works**: Auth, config, webhooks, chat, full code structure
+- **What's missing**: Azalea API calls (18-24h work)
+- **Code quality**: Compiles ✅, documented ✅, implementation-ready ✅
+- **Get details**: See [COMPLETION-SUMMARY.md](COMPLETION-SUMMARY.md)
+- **Complete it**: See [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md)
 
 ---
 
