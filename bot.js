@@ -698,7 +698,7 @@ async function mainLoop() {
     
     if (!cheapMap) {
       // No cheap maps - use refresh button instead of reopening
-      console.log('[AH] No cheap maps found, refreshing...');
+      console.log(`[AH] No cheap maps found under $${CONFIG.maxBuyPrice}, refreshing...`);
       try {
         // Click refresh button (anvil icon in AH window)
         console.log(`[AH] Clicking refresh button (slot ${REFRESH_BUTTON_SLOT})...`);
