@@ -237,28 +237,79 @@ async function openAuctionHouse() {
 }
 
 function findCheapMap(window) {
+  console.log(`[AH DEBUG] Scanning ${window.slots.length} slots in auction house window`);
+  let itemsWithData = 0;
+  
   for (let slot = 0; slot < window.slots.length; slot++) {
     const item = window.slots[slot];
     if (!item) continue;
     
+    itemsWithData++;
+    console.log(`[AH DEBUG] === Slot ${slot} ===`);
+    console.log(`[AH DEBUG] Item name: ${item.name || 'unknown'}`);
+    console.log(`[AH DEBUG] Item displayName: ${item.displayName || 'unknown'}`);
+    console.log(`[AH DEBUG] Item count: ${item.count || 1}`);
+    
+    // Log full raw NBT data
+    try {
+      console.log(`[AH DEBUG] Full item object: ${JSON.stringify(item, null, 2)}`);
+    } catch (e) {
+      console.log(`[AH DEBUG] Could not stringify full item object: ${e.message}`);
+    }
+    
     // Check if item has lore with price information
     try {
-      const nbt = item.nbt;
-      if (!nbt || !nbt.value) continue;
-      
-      // Try to access display data
       let loreArray = null;
+      let loreSource = 'none';
       
-      if (nbt.value.display && nbt.value.display.value && nbt.value.display.value.Lore) {
-        const loreData = nbt.value.display.value.Lore;
-        if (loreData.value && loreData.value.value) {
-          loreArray = loreData.value.value;
-        } else if (loreData.value) {
-          loreArray = loreData.value;
+      // Try multiple paths to find lore data
+      // Path 1: item.nbt.value.display.value.Lore.value.value (older versions)
+      if (item.nbt?.value?.display?.value?.Lore?.value?.value) {
+        loreArray = item.nbt.value.display.value.Lore.value.value;
+        loreSource = 'nbt.value.display.value.Lore.value.value';
+        console.log(`[AH DEBUG] Found lore at path: ${loreSource}`);
+      }
+      // Path 2: item.nbt.value.display.value.Lore.value (alternative)
+      else if (item.nbt?.value?.display?.value?.Lore?.value && Array.isArray(item.nbt.value.display.value.Lore.value)) {
+        loreArray = item.nbt.value.display.value.Lore.value;
+        loreSource = 'nbt.value.display.value.Lore.value';
+        console.log(`[AH DEBUG] Found lore at path: ${loreSource}`);
+      }
+      // Path 3: item.customLore (some versions)
+      else if (item.customLore && Array.isArray(item.customLore)) {
+        loreArray = item.customLore;
+        loreSource = 'customLore';
+        console.log(`[AH DEBUG] Found lore at path: ${loreSource}`);
+      }
+      // Path 4: item.lore (some versions)
+      else if (item.lore && Array.isArray(item.lore)) {
+        loreArray = item.lore;
+        loreSource = 'lore';
+        console.log(`[AH DEBUG] Found lore at path: ${loreSource}`);
+      }
+      // Path 5: Check for component-based data (1.21.1+)
+      else if (item.nbt?.value?.components) {
+        console.log(`[AH DEBUG] Item has component-based NBT data`);
+        console.log(`[AH DEBUG] Components: ${JSON.stringify(item.nbt.value.components, null, 2)}`);
+        // Try to find lore in components
+        const components = item.nbt.value.components;
+        if (components.value) {
+          for (const component of components.value) {
+            console.log(`[AH DEBUG] Component: ${JSON.stringify(component, null, 2)}`);
+          }
         }
       }
       
-      if (!loreArray || !Array.isArray(loreArray)) continue;
+      if (!loreArray || !Array.isArray(loreArray)) {
+        console.log(`[AH DEBUG] No lore array found for slot ${slot}`);
+        console.log(`[AH DEBUG] Checked paths: nbt.value.display.value.Lore.value.value, nbt.value.display.value.Lore.value, customLore, lore, components`);
+        continue;
+      }
+      
+      console.log(`[AH DEBUG] Lore array (${loreArray.length} lines) from ${loreSource}:`);
+      for (let i = 0; i < loreArray.length; i++) {
+        console.log(`[AH DEBUG]   Line ${i}: ${JSON.stringify(loreArray[i])}`);
+      }
       
       // Parse lore lines for price and seller
       let price = null;
@@ -266,14 +317,27 @@ function findCheapMap(window) {
       
       for (const loreLine of loreArray) {
         let lineText = '';
+        
+        // Handle different lore line formats
         if (typeof loreLine === 'string') {
           lineText = loreLine;
-        } else if (loreLine && typeof loreLine.toString === 'function') {
-          lineText = loreLine.toString();
+        } else if (loreLine && typeof loreLine === 'object') {
+          // Try to extract text from JSON text component
+          if (loreLine.text) {
+            lineText = loreLine.text;
+          } else if (loreLine.toString && typeof loreLine.toString === 'function') {
+            lineText = loreLine.toString();
+          } else {
+            // Might be a complex text component, try to stringify it
+            lineText = JSON.stringify(loreLine);
+          }
         }
+        
+        console.log(`[AH DEBUG]   Parsed line text: ${lineText}`);
         
         if (!price && lineText.includes('Price:')) {
           price = parsePrice(lineText);
+          console.log(`[AH DEBUG]   Extracted price: ${price}`);
         }
         
         // Try to find seller name in lore
@@ -282,6 +346,7 @@ function findCheapMap(window) {
           const sellerMatch = clean.match(/Seller:\s*(.+)/i);
           if (sellerMatch) {
             seller = sellerMatch[1].trim();
+            console.log(`[AH DEBUG]   Extracted seller: ${seller}`);
           }
         }
         
@@ -291,16 +356,24 @@ function findCheapMap(window) {
         }
       }
       
-      if (price !== null && price < CONFIG.maxBuyPrice) {
-        console.log(`[AH] Found cheap map at slot ${slot}: $${price}`);
-        return { slot, price, seller };
+      if (price !== null) {
+        console.log(`[AH DEBUG] Item price: $${price}, max buy price: $${CONFIG.maxBuyPrice}`);
+        if (price < CONFIG.maxBuyPrice) {
+          console.log(`[AH] Found cheap map at slot ${slot}: $${price}`);
+          return { slot, price, seller };
+        } else {
+          console.log(`[AH DEBUG] Price too high, skipping`);
+        }
+      } else {
+        console.log(`[AH DEBUG] Could not extract price from lore`);
       }
     } catch (error) {
-      // Skip items with parsing errors
+      console.error(`[AH DEBUG] Error parsing slot ${slot}:`, error);
       continue;
     }
   }
   
+  console.log(`[AH DEBUG] Scanned ${itemsWithData} items with data, found no cheap maps under $${CONFIG.maxBuyPrice}`);
   return null;
 }
 
@@ -633,12 +706,34 @@ function createBot() {
   });
   
   bot.on('kicked', (reason) => {
-    console.log(`[BOT] Kicked: ${reason}`);
+    // Handle kick reason which may be an object (chat component) or string
+    let reasonText = 'Unknown';
+    
+    if (typeof reason === 'string') {
+      reasonText = reason;
+    } else if (reason && typeof reason === 'object') {
+      // Try to extract text from chat component
+      if (reason.text) {
+        reasonText = reason.text;
+      } else if (reason.toString && typeof reason.toString === 'function') {
+        try {
+          reasonText = reason.toString();
+        } catch (e) {
+          reasonText = JSON.stringify(reason);
+        }
+      } else {
+        reasonText = JSON.stringify(reason);
+      }
+    }
+    
+    console.log(`[BOT] Kicked: ${reasonText}`);
+    console.log(`[BOT DEBUG] Full kick reason object: ${JSON.stringify(reason)}`);
+    
     sendWebhook('error', {
       message: `❌ Bot was kicked from server`,
       color: 15158332,
       fields: [
-        { name: 'Reason', value: reason }
+        { name: 'Reason', value: reasonText }
       ]
     });
     reconnect();
