@@ -6,15 +6,15 @@ pub fn parse_price(text: &str) -> Option<u32> {
     let clean_text = strip_minecraft_colors(text);
     
     // Match price patterns: $995, $5K, $9.9K, $10,000, etc.
-    let re = Regex::new(r"\$([0-9,.]+)(K?|k?)").ok()?;
+    let re = Regex::new(r"\$([0-9,.]+)([Kk]?)").ok()?;
     let caps = re.captures(&clean_text)?;
     
     let number_str = caps.get(1)?.as_str().replace(",", "");
-    let suffix = caps.get(2)?.as_str().to_uppercase();
+    let suffix = caps.get(2).map(|m| m.as_str()).unwrap_or("");
     
     let base_number: f64 = number_str.parse().ok()?;
     
-    let price = if suffix == "K" {
+    let price = if suffix.eq_ignore_ascii_case("K") {
         (base_number * 1000.0) as u32
     } else {
         base_number as u32
