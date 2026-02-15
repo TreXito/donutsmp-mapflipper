@@ -434,22 +434,26 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
       const windowCloseHandler = () => {
         console.log('[AH] Window closed after purchase attempt');
         
-        // If no "already bought" message appeared, the purchase was successful
-        if (!alreadyBoughtMessageReceived) {
-          clearTimeout(timeout);
-          bot.off('messagestr', messageHandler);
-          sendSuccessWebhook();
-          safeResolve(true);
-        } else {
-          // Window closed after already bought message - this is a failed purchase
-          console.log('[AH] Window closed after "already bought" message');
-          safeResolve(false);
-        }
+        // Wait 2 seconds after window close to catch delayed "already bought" messages
+        // The message might arrive slightly after the window closes
+        setTimeout(() => {
+          // If no "already bought" message appeared, the purchase was successful
+          if (!alreadyBoughtMessageReceived) {
+            clearTimeout(timeout);
+            bot.off('messagestr', messageHandler);
+            sendSuccessWebhook();
+            safeResolve(true);
+          } else {
+            // Window closed but "already bought" message received - failed purchase
+            console.log('[AH] Window closed but "already bought" message received');
+            safeResolve(false);
+          }
+        }, 2000);
       };
       
       bot.once('windowClose', windowCloseHandler);
       
-      // Timeout after 3 seconds if window doesn't close
+      // Timeout after 5 seconds (3s for window close + 2s for message verification)
       const timeout = setTimeout(() => {
         bot.off('windowClose', windowCloseHandler);
         bot.off('messagestr', messageHandler);
@@ -465,7 +469,7 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
           // Already bought message received, definitely failed
           safeResolve(false);
         }
-      }, 3000);
+      }, 5000);
       
       const messageHandler = (msg) => {
         const normalized = normalizeText(msg);
