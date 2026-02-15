@@ -222,8 +222,18 @@ function setupStateIdTracking() {
 }
 
 async function sendWebhook(event, data) {
-  if (!CONFIG.webhook.enabled || !CONFIG.webhook.url) return;
-  if (!CONFIG.webhook.events[event]) return;
+  if (!CONFIG.webhook.enabled) {
+    console.log(`[WEBHOOK] Webhook disabled, skipping ${event} event`);
+    return;
+  }
+  if (!CONFIG.webhook.url) {
+    console.error('[WEBHOOK] Webhook URL not configured');
+    return;
+  }
+  if (!CONFIG.webhook.events[event]) {
+    console.log(`[WEBHOOK] Event ${event} is disabled in configuration`);
+    return;
+  }
   
   try {
     const url = new URL(CONFIG.webhook.url);
@@ -255,6 +265,7 @@ async function sendWebhook(event, data) {
         res.on('data', (chunk) => { responseData += chunk; });
         res.on('end', () => {
           if (res.statusCode >= 200 && res.statusCode < 300) {
+            console.log(`[WEBHOOK] Successfully sent ${event} webhook`);
             resolve();
           } else {
             console.error(`[WEBHOOK] Failed to send webhook (status ${res.statusCode}):`, responseData);
@@ -578,36 +589,59 @@ async function unstackMaps() {
 async function listMaps() {
   console.log('[LISTING] Listing purchased maps...');
   
-  // Find maps in hotbar (slots HOTBAR_START_SLOT-HOTBAR_END_SLOT correspond to hotbar 0-8)
+  // Find ALL maps in the entire inventory (not just hotbar)
   const inventory = bot.inventory;
-  const maps = [];
+  const allMapItems = [];
   
-  for (let i = 0; i < 9; i++) {
-    const item = inventory.slots[HOTBAR_START_SLOT + i];
+  // Scan all inventory slots for maps
+  for (let slot = 0; slot < inventory.slots.length; slot++) {
+    const item = inventory.slots[slot];
     if (item && item.name && item.name.includes('map')) {
-      maps.push(i);
+      allMapItems.push({ item, slot });
     }
   }
   
-  console.log(`[LISTING] Found ${maps.length} map(s) in hotbar`);
+  console.log(`[LISTING] Found ${allMapItems.length} map(s) in inventory`);
+  
+  if (allMapItems.length === 0) {
+    console.log('[LISTING] No maps to list');
+    return;
+  }
   
   // Check if we might hit the 27 slot limit
-  // This is a rough estimate - ideally we'd query actual AH slots
-  if (maps.length > WARN_MAP_COUNT_THRESHOLD) {
+  if (allMapItems.length > WARN_MAP_COUNT_THRESHOLD) {
     console.log('[LISTING] Warning: Listing many maps at once - may hit slot limit');
   }
   
-  for (const hotbarSlot of maps) {
-    console.log(`[LISTING] Listing map from hotbar slot ${hotbarSlot}...`);
+  let listedCount = 0;
+  
+  for (const { item, slot } of allMapItems) {
+    console.log(`[LISTING] Listing map from inventory slot ${slot}...`);
     
-    // Step 1: Hold the map in hotbar
+    // Step 1: Move map to hotbar if not already there
+    let hotbarSlot = 0; // Use first hotbar slot
+    const hotbarSlotIndex = HOTBAR_START_SLOT + hotbarSlot;
+    
+    if (slot !== hotbarSlotIndex) {
+      try {
+        // Move the map to hotbar slot 0
+        console.log(`[LISTING] Moving map from slot ${slot} to hotbar slot ${hotbarSlot}...`);
+        await bot.moveSlotItem(slot, hotbarSlotIndex);
+        await sleep(200);
+      } catch (error) {
+        console.error(`[LISTING] Error moving map to hotbar:`, error.message);
+        continue;
+      }
+    }
+    
+    // Step 2: Hold the map in hotbar
     bot.setQuickBarSlot(hotbarSlot);
     await sleep(200);
     
-    // Step 2: Send /ah sell command
+    // Step 3: Send /ah sell command
     bot.chat(`/ah sell ${CONFIG.sellPrice}`);
     
-    // Step 3: Wait for confirmation window to open
+    // Step 4: Wait for confirmation window to open
     try {
       const confirmWindow = await new Promise((resolve, reject) => {
         let timeout;
@@ -627,15 +661,15 @@ async function listMaps() {
       
       console.log(`[LISTING] Confirmation window opened (window ID: ${confirmWindow.id})`);
       
-      // Step 4: Click slot 0 to select the item
+      // Step 5: Click slot 0 to select the item
       clickWindowSlot(confirmWindow.id, 0, 0, 0);
       await sleep(CLICK_CONFIRM_DELAY); // Wait for confirm button to appear
       
-      // Step 5: Click confirm button at slot 15
+      // Step 6: Click confirm button at slot 15
       console.log('[LISTING] Clicking confirm button at slot 15...');
       clickWindowSlot(confirmWindow.id, 15, 0, 0);
       
-      // Step 6: Wait for window to close
+      // Step 7: Wait for window to close
       await new Promise((resolve) => {
         let closeTimeout;
         
@@ -656,8 +690,10 @@ async function listMaps() {
         });
       });
       
+      listedCount++;
+      
     } catch (error) {
-      console.error(`[LISTING] Error listing map from slot ${hotbarSlot}:`, error.message);
+      console.error(`[LISTING] Error listing map from slot ${slot}:`, error.message);
       // Close any open window to prevent protocol conflicts
       if (bot.currentWindow) {
         try {
@@ -670,18 +706,18 @@ async function listMaps() {
     }
   }
   
-  if (maps.length > 0) {
+  if (listedCount > 0) {
     await sendWebhook('listing', {
-      message: `📋 Listed ${maps.length} map(s) for sale`,
+      message: `📋 Listed ${listedCount} map(s) for sale`,
       color: 3447003,
       fields: [
-        { name: 'Quantity', value: maps.length.toString(), inline: true },
+        { name: 'Quantity', value: listedCount.toString(), inline: true },
         { name: 'Price Each', value: CONFIG.sellPrice, inline: true }
       ]
     });
   }
   
-  console.log('[LISTING] All maps listed successfully');
+  console.log(`[LISTING] Successfully listed ${listedCount} map(s)`);
 }
 
 async function mainLoop() {
