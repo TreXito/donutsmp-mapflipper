@@ -94,6 +94,27 @@ function isPartialPacketError(err) {
   return err && err.message && err.message.includes('partial packet');
 }
 
+function extractLore(item) {
+  if (!item.components) return [];
+  const loreComponent = item.components.find(c => c.type === 'lore');
+  if (!loreComponent || !loreComponent.data) return [];
+  
+  return loreComponent.data.map(line => {
+    let text = '';
+    if (line.value && line.value.text) {
+      text += line.value.text.value || '';
+    }
+    if (line.value && line.value.extra && line.value.extra.value && line.value.extra.value.value) {
+      for (const part of line.value.extra.value.value) {
+        if (part.text) {
+          text += part.text.value || '';
+        }
+      }
+    }
+    return text;
+  });
+}
+
 function parsePrice(loreString) {
   const clean = stripMinecraftColors(loreString);
   const match = clean.match(/Price:\s*\$([0-9,.]+)(K?)/i);
@@ -220,8 +241,11 @@ async function handleAfkDetection() {
 }
 
 async function openAuctionHouse() {
-  console.log('[AH] Opening auction house...');
+  console.log('[AH] Sending command: /ah map');
   bot.chat('/ah map');
+  
+  // Small delay to prevent "Invalid sequence" kick
+  await sleep(300);
   
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -230,17 +254,42 @@ async function openAuctionHouse() {
     
     bot.once('windowOpen', (window) => {
       clearTimeout(timeout);
-      console.log(`[AH] Auction house opened, ${window.slots.length} slots`);
+      console.log(`[AH] Window opened - Type: ${window.type}, Total slots: ${window.slots.length}`);
       resolve(window);
     });
   });
 }
 
 function findCheapMap(window) {
-  console.log(`[AH DEBUG] Scanning ${window.slots.length} slots in auction house window`);
+  // Determine container size based on window type
+  // For chest GUIs: double chest = 54 slots, single chest = 27 slots
+  // The player inventory slots come AFTER the container slots
+  let containerSize = 0;
+  
+  if (window.type === 'minecraft:generic_9x6' || window.type === 'minecraft:chest' || window.type === 'generic_9x6') {
+    containerSize = 54; // Double chest
+  } else if (window.type === 'minecraft:generic_9x3' || window.type === 'generic_9x3') {
+    containerSize = 27; // Single chest
+  } else {
+    // Fallback: assume standard chest based on total slots
+    // Standard chest GUI has container slots + 36 player inventory slots
+    if (window.slots.length >= 54 + 36) {
+      containerSize = 54; // Double chest
+    } else if (window.slots.length >= 27 + 36) {
+      containerSize = 27; // Single chest
+    } else {
+      // Unknown window type, scan all slots as fallback
+      containerSize = window.slots.length;
+    }
+  }
+  
+  console.log(`[AH] Window type: ${window.type}, Total slots: ${window.slots.length}, Container slots: ${containerSize}`);
+  console.log(`[AH] Scanning slots 0-${containerSize - 1} (container only, excluding player inventory)`);
+  
   let itemsWithData = 0;
   
-  for (let slot = 0; slot < window.slots.length; slot++) {
+  // ONLY scan container slots, NOT player inventory
+  for (let slot = 0; slot < containerSize; slot++) {
     const item = window.slots[slot];
     if (!item) continue;
     
@@ -250,91 +299,31 @@ function findCheapMap(window) {
     console.log(`[AH DEBUG] Item displayName: ${item.displayName || 'unknown'}`);
     console.log(`[AH DEBUG] Item count: ${item.count || 1}`);
     
-    // Log full raw NBT data
-    try {
-      console.log(`[AH DEBUG] Full item object: ${JSON.stringify(item, null, 2)}`);
-    } catch (e) {
-      console.log(`[AH DEBUG] Could not stringify full item object: ${e.message}`);
+    // Check if item has components (1.21.1+)
+    if (!item.components) {
+      console.log(`[AH DEBUG] No components found for slot ${slot}`);
+      continue;
     }
     
-    // Check if item has lore with price information
     try {
-      let loreArray = null;
-      let loreSource = 'none';
+      // Extract lore using the new component-based function
+      const loreLines = extractLore(item);
       
-      // Try multiple paths to find lore data
-      // Path 1: item.nbt.value.display.value.Lore.value.value (older versions)
-      if (item.nbt?.value?.display?.value?.Lore?.value?.value) {
-        loreArray = item.nbt.value.display.value.Lore.value.value;
-        loreSource = 'nbt.value.display.value.Lore.value.value';
-        console.log(`[AH DEBUG] Found lore at path: ${loreSource}`);
-      }
-      // Path 2: item.nbt.value.display.value.Lore.value (alternative)
-      else if (item.nbt?.value?.display?.value?.Lore?.value && Array.isArray(item.nbt.value.display.value.Lore.value)) {
-        loreArray = item.nbt.value.display.value.Lore.value;
-        loreSource = 'nbt.value.display.value.Lore.value';
-        console.log(`[AH DEBUG] Found lore at path: ${loreSource}`);
-      }
-      // Path 3: item.customLore (some versions)
-      else if (item.customLore && Array.isArray(item.customLore)) {
-        loreArray = item.customLore;
-        loreSource = 'customLore';
-        console.log(`[AH DEBUG] Found lore at path: ${loreSource}`);
-      }
-      // Path 4: item.lore (some versions)
-      else if (item.lore && Array.isArray(item.lore)) {
-        loreArray = item.lore;
-        loreSource = 'lore';
-        console.log(`[AH DEBUG] Found lore at path: ${loreSource}`);
-      }
-      // Path 5: Check for component-based data (1.21.1+)
-      else if (item.nbt?.value?.components) {
-        console.log(`[AH DEBUG] Item has component-based NBT data`);
-        console.log(`[AH DEBUG] Components: ${JSON.stringify(item.nbt.value.components, null, 2)}`);
-        // Try to find lore in components
-        const components = item.nbt.value.components;
-        if (components.value) {
-          for (const component of components.value) {
-            console.log(`[AH DEBUG] Component: ${JSON.stringify(component, null, 2)}`);
-          }
-        }
-      }
-      
-      if (!loreArray || !Array.isArray(loreArray)) {
-        console.log(`[AH DEBUG] No lore array found for slot ${slot}`);
-        console.log(`[AH DEBUG] Checked paths: nbt.value.display.value.Lore.value.value, nbt.value.display.value.Lore.value, customLore, lore, components`);
+      if (loreLines.length === 0) {
+        console.log(`[AH DEBUG] No lore found for slot ${slot}`);
         continue;
       }
       
-      console.log(`[AH DEBUG] Lore array (${loreArray.length} lines) from ${loreSource}:`);
-      for (let i = 0; i < loreArray.length; i++) {
-        console.log(`[AH DEBUG]   Line ${i}: ${JSON.stringify(loreArray[i])}`);
+      console.log(`[AH DEBUG] Lore (${loreLines.length} lines):`);
+      for (let i = 0; i < loreLines.length; i++) {
+        console.log(`[AH DEBUG]   Line ${i}: ${loreLines[i]}`);
       }
       
       // Parse lore lines for price and seller
       let price = null;
       let seller = null;
       
-      for (const loreLine of loreArray) {
-        let lineText = '';
-        
-        // Handle different lore line formats
-        if (typeof loreLine === 'string') {
-          lineText = loreLine;
-        } else if (loreLine && typeof loreLine === 'object') {
-          // Try to extract text from JSON text component
-          if (loreLine.text) {
-            lineText = loreLine.text;
-          } else if (loreLine.toString && typeof loreLine.toString === 'function') {
-            lineText = loreLine.toString();
-          } else {
-            // Might be a complex text component, try to stringify it
-            lineText = JSON.stringify(loreLine);
-          }
-        }
-        
-        console.log(`[AH DEBUG]   Parsed line text: ${lineText}`);
-        
+      for (const lineText of loreLines) {
         if (!price && lineText.includes('Price:')) {
           price = parsePrice(lineText);
           console.log(`[AH DEBUG]   Extracted price: ${price}`);
@@ -373,7 +362,7 @@ function findCheapMap(window) {
     }
   }
   
-  console.log(`[AH DEBUG] Scanned ${itemsWithData} items with data, found no cheap maps under $${CONFIG.maxBuyPrice}`);
+  console.log(`[AH] Scanned ${itemsWithData} items in container slots, found no cheap maps under $${CONFIG.maxBuyPrice}`);
   return null;
 }
 
