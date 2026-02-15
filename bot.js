@@ -84,6 +84,12 @@ const HOTBAR_START_SLOT = 36;
 const HOTBAR_END_SLOT = 44;
 const WARN_MAP_COUNT_THRESHOLD = 5;
 const MIN_RETRY_DELAY = 3000; // Minimum delay before retry after errors (ms)
+const REDUCED_CYCLE_DELAY = 2500; // Fast cycle delay when no maps found or purchase failed (ms)
+const CLICK_CONFIRM_DELAY = 400; // Delay between clicking item and confirm button (ms)
+const REFRESH_WAIT_DELAY = 500; // Delay after clicking refresh button (ms)
+const WINDOW_CLOSE_TIMEOUT = 3000; // Timeout waiting for window to close (ms)
+const WINDOW_CLEANUP_DELAY = 300; // Delay after closing window for cleanup (ms)
+const REFRESH_BUTTON_SLOT = 49; // Slot containing the refresh button (anvil icon) in AH window
 
 let bot;
 let isAfkDetected = false;
@@ -431,7 +437,7 @@ function findCheapMap(window) {
     }
   }
   
-  console.log(`[AH] No cheap maps found under $${CONFIG.maxBuyPrice}`);
+  // Don't log here - let the caller handle logging to avoid duplicates
   return null;
 }
 
@@ -441,9 +447,9 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
   try {
     // Click the map slot using manual window click with stateId
     clickWindowSlot(window.id, mapSlot, 0, 0);
-    // Wait 1 second for the server to update the window state
-    // Longer delay needed for reliable state updates in 1.21.1 protocol
-    await sleep(1000);
+    // Wait for the server to update the window state
+    // Reduced from 1000ms - stateId tracking handles protocol correctness
+    await sleep(CLICK_CONFIRM_DELAY);
     
     // Click confirm button at slot 15
     console.log('[AH] Clicking confirm button...');
@@ -593,10 +599,75 @@ async function listMaps() {
   
   for (const hotbarSlot of maps) {
     console.log(`[LISTING] Listing map from hotbar slot ${hotbarSlot}...`);
+    
+    // Step 1: Hold the map in hotbar
     bot.setQuickBarSlot(hotbarSlot);
     await sleep(200);
+    
+    // Step 2: Send /ah sell command
     bot.chat(`/ah sell ${CONFIG.sellPrice}`);
-    await sleep(500);
+    
+    // Step 3: Wait for confirmation window to open
+    try {
+      const confirmWindow = await new Promise((resolve, reject) => {
+        let timeout;
+        
+        const windowHandler = (window) => {
+          clearTimeout(timeout);
+          resolve(window);
+        };
+        
+        timeout = setTimeout(() => {
+          bot.off('windowOpen', windowHandler);
+          reject(new Error('Timeout waiting for listing confirmation window'));
+        }, CONFIG.windowTimeout);
+        
+        bot.once('windowOpen', windowHandler);
+      });
+      
+      console.log(`[LISTING] Confirmation window opened (window ID: ${confirmWindow.id})`);
+      
+      // Step 4: Click slot 0 to select the item
+      clickWindowSlot(confirmWindow.id, 0, 0, 0);
+      await sleep(CLICK_CONFIRM_DELAY); // Wait for confirm button to appear
+      
+      // Step 5: Click confirm button at slot 15
+      console.log('[LISTING] Clicking confirm button at slot 15...');
+      clickWindowSlot(confirmWindow.id, 15, 0, 0);
+      
+      // Step 6: Wait for window to close
+      await new Promise((resolve) => {
+        let closeTimeout;
+        
+        const closeHandler = () => {
+          console.log('[LISTING] Listing confirmed, window closed');
+          resolve();
+        };
+        
+        closeTimeout = setTimeout(() => {
+          bot.off('windowClose', closeHandler);
+          console.log('[LISTING] Window did not close in time, continuing...');
+          resolve();
+        }, WINDOW_CLOSE_TIMEOUT);
+        
+        bot.once('windowClose', () => {
+          clearTimeout(closeTimeout);
+          closeHandler();
+        });
+      });
+      
+    } catch (error) {
+      console.error(`[LISTING] Error listing map from slot ${hotbarSlot}:`, error.message);
+      // Close any open window to prevent protocol conflicts
+      if (bot.currentWindow) {
+        try {
+          bot.closeWindow(bot.currentWindow);
+          await sleep(WINDOW_CLEANUP_DELAY);
+        } catch (e) {
+          // Ignore close errors
+        }
+      }
+    }
   }
   
   if (maps.length > 0) {
@@ -626,18 +697,39 @@ async function mainLoop() {
     let cheapMap = findCheapMap(window);
     
     if (!cheapMap) {
-      console.log('[AH] No cheap maps found, waiting before retry...');
+      // No cheap maps - use refresh button instead of reopening
+      console.log(`[AH] No cheap maps found under $${CONFIG.maxBuyPrice}, refreshing...`);
       try {
+        // Click refresh button (anvil icon in AH window)
+        console.log(`[AH] Clicking refresh button (slot ${REFRESH_BUTTON_SLOT})...`);
+        clickWindowSlot(window.id, REFRESH_BUTTON_SLOT, 0, 0);
+        await sleep(REFRESH_WAIT_DELAY); // Wait for refresh to complete
+        
+        // Check again after refresh
+        cheapMap = findCheapMap(window);
+        
+        if (!cheapMap) {
+          // Still no cheap maps after refresh - close and wait
+          console.log(`[AH] No cheap maps found under $${CONFIG.maxBuyPrice} after refresh`);
+          if (bot.currentWindow) {
+            bot.closeWindow(bot.currentWindow);
+          }
+          // Reduced delay when no cheap maps found
+          await sleep(REDUCED_CYCLE_DELAY);
+          isRunning = false;
+          setImmediate(() => mainLoop());
+          return;
+        }
+      } catch (e) {
+        console.log('[AH] Error refreshing, will reopen next cycle:', e.message);
         if (bot.currentWindow) {
           bot.closeWindow(bot.currentWindow);
         }
-      } catch (e) {
-        console.log('[AH] Window already closed');
+        await sleep(REDUCED_CYCLE_DELAY);
+        isRunning = false;
+        setImmediate(() => mainLoop());
+        return;
       }
-      await sleep(CONFIG.delayBetweenCycles);
-      isRunning = false;
-      setImmediate(() => mainLoop());
-      return;
     }
     
     // Attempt to buy the map
@@ -673,7 +765,7 @@ async function mainLoop() {
         console.log('[AH] Warning: Window still open after purchase, closing manually');
         try {
           bot.closeWindow(bot.currentWindow);
-          await sleep(300);
+          await sleep(WINDOW_CLEANUP_DELAY);
         } catch (e) {
           console.log('[AH] Error closing window:', e.message);
         }
@@ -685,8 +777,7 @@ async function mainLoop() {
       // List the maps
       await listMaps();
       
-      // Small delay before next cycle
-      await sleep(1000);
+      // No delay after successful purchase - go immediately to next cycle
     } else {
       console.log('[AH] Failed to purchase map after retries');
       
@@ -695,12 +786,13 @@ async function mainLoop() {
         console.log('[AH] Closing window after failed purchase');
         try {
           bot.closeWindow(bot.currentWindow);
-          await sleep(300);
+          await sleep(WINDOW_CLEANUP_DELAY);
         } catch (e) {
           console.log('[AH] Window already closed');
         }
       }
-      await sleep(CONFIG.delayBetweenCycles);
+      // Reduced delay when purchase fails
+      await sleep(REDUCED_CYCLE_DELAY);
     }
     
     isRunning = false;
@@ -733,7 +825,7 @@ async function mainLoop() {
     
     // Wait at least MIN_RETRY_DELAY (3s) before retry to prevent "Invalid sequence" kick
     // Especially important after timeout errors
-    const retryDelay = Math.max(CONFIG.delayBetweenCycles, MIN_RETRY_DELAY);
+    const retryDelay = Math.max(REDUCED_CYCLE_DELAY, MIN_RETRY_DELAY);
     console.log(`[ERROR] Waiting ${retryDelay}ms before retry to avoid protocol conflicts`);
     await sleep(retryDelay);
     
