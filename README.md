@@ -11,6 +11,8 @@ A Mineflayer bot that automates buying cheap maps from the auction house on donu
 - ✅ Map unstacking for bulk listings
 - ✅ Configurable buy/sell prices
 - ✅ Microsoft authentication support
+- ✅ Discord webhook notifications for purchases, sales, and events
+- ✅ Partial packet error suppression
 
 ## Requirements
 
@@ -29,9 +31,9 @@ The bot can be configured in two ways:
 
 ### Option 1: Using config.json (Recommended)
 
-1. Copy `config.example.json` to `config.json`:
+1. Copy the template to create your config:
    ```bash
-   cp config.example.json config.json
+   cp config.template.json config.json
    ```
 
 2. Edit `config.json` with your settings:
@@ -45,7 +47,20 @@ The bot can be configured in two ways:
      "maxBuyPrice": 5000,
      "sellPrice": "9.9k",
      "delayBetweenCycles": 5000,
-     "delayAfterJoin": 5000
+     "delayAfterJoin": 5000,
+     "webhook": {
+       "enabled": false,
+       "url": "",
+       "displayName": "DonutSMP Map Flipper",
+       "events": {
+         "purchase": true,
+         "listing": true,
+         "sale": true,
+         "afk": true,
+         "error": true,
+         "startup": true
+       }
+     }
    }
    ```
 
@@ -72,6 +87,57 @@ Set environment variables to override defaults:
 - `sellPrice`: Price to list maps at (default: 9.9k)
 - `delayBetweenCycles`: Wait time between auction checks in ms (default: 5000)
 - `delayAfterJoin`: Wait time after spawning before starting (default: 5000)
+- `webhook`: Webhook configuration for Discord notifications
+  - `enabled`: Enable webhook notifications (default: false)
+  - `url`: Discord webhook URL
+  - `displayName`: Bot display name in Discord (default: 'DonutSMP Map Flipper')
+  - `events`: Control which events trigger notifications
+    - `purchase`: Notify when bot buys a map
+    - `listing`: Notify when bot lists maps for sale
+    - `sale`: Notify when someone buys from bot
+    - `afk`: Notify when AFK is detected
+    - `error`: Notify on errors and kicks
+    - `startup`: Notify when bot connects
+
+## Webhook Setup (Optional)
+
+To receive Discord notifications for bot events:
+
+1. Create a Discord webhook:
+   - Open your Discord server settings
+   - Go to Integrations → Webhooks
+   - Click "New Webhook"
+   - Choose a channel and copy the webhook URL
+
+2. Enable webhooks in `config.json`:
+   ```json
+   {
+     "webhook": {
+       "enabled": true,
+       "url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_URL",
+       "displayName": "DonutSMP Map Flipper",
+       "events": {
+         "purchase": true,
+         "listing": true,
+         "sale": true,
+         "afk": true,
+         "error": true,
+         "startup": true
+       }
+     }
+   }
+   ```
+
+3. Customize which events you want to be notified about by setting them to `true` or `false`
+
+### Webhook Events
+
+- **purchase**: Notifies when the bot buys a map, includes price and seller
+- **listing**: Notifies when the bot lists maps for sale
+- **sale**: Notifies when someone buys a map from the bot
+- **afk**: Notifies when AFK detection triggers
+- **error**: Notifies on errors and when bot is kicked
+- **startup**: Notifies when bot successfully connects to server
 
 ## Authentication
 
@@ -114,9 +180,10 @@ For offline/cracked servers that don't require authentication:
 
 ### Using config.json (Recommended):
 ```bash
-# 1. Create and edit your config file
-cp config.example.json config.json
+# 1. Copy template and edit with your settings
+cp config.template.json config.json
 # Edit config.json with your Minecraft username
+# Enable webhooks if desired
 
 # 2. Run the bot
 npm start

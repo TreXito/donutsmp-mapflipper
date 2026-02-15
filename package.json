@@ -17,5 +17,11 @@
   "dependencies": {
     "mineflayer": "^4.20.1",
     "prismarine-auth": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "notes": {
+    "mineflayer": "Tested with 4.35.0. Internal _client API used for packet error suppression may break with major updates."
   }
 }

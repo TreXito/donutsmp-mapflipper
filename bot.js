@@ -1,6 +1,7 @@
 const mineflayer = require('mineflayer');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 
 // Load configuration from config.json if it exists
 let fileConfig = {};
@@ -28,6 +29,19 @@ const CONFIG = {
   sellPrice: fileConfig.sellPrice || process.env.SELL_PRICE || '9.9k',
   delayBetweenCycles: fileConfig.delayBetweenCycles || parseInt(process.env.DELAY_BETWEEN_CYCLES) || 5000,
   delayAfterJoin: fileConfig.delayAfterJoin || parseInt(process.env.DELAY_AFTER_JOIN) || 5000,
+  webhook: fileConfig.webhook || {
+    enabled: false,
+    url: '',
+    displayName: 'DonutSMP Map Flipper',
+    events: {
+      purchase: true,
+      listing: true,
+      sale: true,
+      afk: true,
+      error: true,
+      startup: true
+    }
+  }
 };
 
 // Constants
@@ -58,8 +72,16 @@ function normalizeText(text) {
   return normalized.toLowerCase();
 }
 
+function stripMinecraftColors(text) {
+  return text.replace(/§[0-9a-fk-or]/gi, '');
+}
+
+function isPartialPacketError(err) {
+  return err && err.message && err.message.includes('partial packet');
+}
+
 function parsePrice(loreString) {
-  const clean = loreString.replace(/§[0-9a-fk-or]/gi, '');
+  const clean = stripMinecraftColors(loreString);
   const match = clean.match(/Price:\s*\$([0-9,.]+)(K?)/i);
   if (!match) return null;
   
@@ -78,6 +100,62 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function sendWebhook(event, data) {
+  if (!CONFIG.webhook.enabled || !CONFIG.webhook.url) return;
+  if (!CONFIG.webhook.events[event]) return;
+  
+  try {
+    const url = new URL(CONFIG.webhook.url);
+    const payload = JSON.stringify({
+      username: CONFIG.webhook.displayName || 'DonutSMP Map Flipper',
+      embeds: [{
+        title: `${event.charAt(0).toUpperCase() + event.slice(1)} Event`,
+        description: data.message,
+        color: data.color || 3447003,
+        timestamp: new Date().toISOString(),
+        fields: data.fields || []
+      }]
+    });
+    
+    return new Promise((resolve) => {
+      const options = {
+        hostname: url.hostname,
+        port: url.port || 443,
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        }
+      };
+      
+      const req = https.request(options, (res) => {
+        let responseData = '';
+        res.on('data', (chunk) => { responseData += chunk; });
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve();
+          } else {
+            console.error(`[WEBHOOK] Failed to send webhook (status ${res.statusCode}):`, responseData);
+            resolve(); // Still resolve to not break bot flow
+          }
+        });
+      });
+      
+      req.on('error', (err) => {
+        console.error('[WEBHOOK] Error sending webhook:', err.message);
+        resolve(); // Still resolve to not break bot flow
+      });
+      
+      req.write(payload);
+      req.end();
+    });
+  } catch (error) {
+    console.error('[WEBHOOK] Invalid webhook URL:', error.message);
+    return Promise.resolve();
+  }
+}
+
 async function handleAfkDetection() {
   // Prevent multiple simultaneous AFK handling
   if (isAfkDetected) {
@@ -88,6 +166,11 @@ async function handleAfkDetection() {
   console.log('[AFK] Detected AFK teleport, returning to hub...');
   isAfkDetected = true;
   isRunning = false;
+  
+  await sendWebhook('afk', {
+    message: 'AFK detected! Returning to hub...',
+    color: 16776960
+  });
   
   try {
     // Send /hub command
@@ -163,7 +246,10 @@ function findCheapMap(window) {
       
       if (!loreArray || !Array.isArray(loreArray)) continue;
       
-      // Parse lore lines
+      // Parse lore lines for price and seller
+      let price = null;
+      let seller = null;
+      
       for (const loreLine of loreArray) {
         let lineText = '';
         if (typeof loreLine === 'string') {
@@ -172,13 +258,28 @@ function findCheapMap(window) {
           lineText = loreLine.toString();
         }
         
-        if (lineText.includes('Price:')) {
-          const price = parsePrice(lineText);
-          if (price !== null && price < CONFIG.maxBuyPrice) {
-            console.log(`[AH] Found cheap map at slot ${slot}: $${price}`);
-            return { slot, price };
+        if (!price && lineText.includes('Price:')) {
+          price = parsePrice(lineText);
+        }
+        
+        // Try to find seller name in lore
+        if (!seller && lineText.includes('Seller:')) {
+          const clean = stripMinecraftColors(lineText);
+          const sellerMatch = clean.match(/Seller:\s*(.+)/i);
+          if (sellerMatch) {
+            seller = sellerMatch[1].trim();
           }
         }
+        
+        // Break early if we found both
+        if (price !== null && seller) {
+          break;
+        }
+      }
+      
+      if (price !== null && price < CONFIG.maxBuyPrice) {
+        console.log(`[AH] Found cheap map at slot ${slot}: $${price}`);
+        return { slot, price, seller };
       }
     } catch (error) {
       // Skip items with parsing errors
@@ -189,7 +290,7 @@ function findCheapMap(window) {
   return null;
 }
 
-async function buyMap(window, mapSlot) {
+async function buyMap(window, mapSlot, mapPrice, mapSeller) {
   console.log(`[AH] Attempting to buy map at slot ${mapSlot}...`);
   
   try {
@@ -204,8 +305,23 @@ async function buyMap(window, mapSlot) {
     
     // Wait to see if "already bought" message appears
     return new Promise((resolve) => {
+      let purchaseSuccessful = false;
+      
       const timeout = setTimeout(() => {
-        resolve(true); // Assume success if no error message
+        purchaseSuccessful = true;
+        bot.off('messagestr', messageHandler);
+        
+        // Send webhook only on confirmed success
+        sendWebhook('purchase', {
+          message: `✅ Bought a map for $${mapPrice}`,
+          color: 5763719,
+          fields: [
+            { name: 'Price', value: `$${mapPrice}`, inline: true },
+            { name: 'Seller', value: mapSeller || 'Unknown', inline: true }
+          ]
+        });
+        
+        resolve(true);
       }, 2000);
       
       const messageHandler = (msg) => {
@@ -296,6 +412,17 @@ async function listMaps() {
     await sleep(500);
   }
   
+  if (maps.length > 0) {
+    await sendWebhook('listing', {
+      message: `📋 Listed ${maps.length} map(s) for sale`,
+      color: 3447003,
+      fields: [
+        { name: 'Quantity', value: maps.length.toString(), inline: true },
+        { name: 'Price Each', value: CONFIG.sellPrice, inline: true }
+      ]
+    });
+  }
+  
   console.log('[LISTING] All maps listed successfully');
 }
 
@@ -332,7 +459,7 @@ async function mainLoop() {
     const maxAttempts = 5;
     
     while (!purchased && attempts < maxAttempts) {
-      purchased = await buyMap(window, cheapMap.slot);
+      purchased = await buyMap(window, cheapMap.slot, cheapMap.price, cheapMap.seller);
       attempts++;
       
       if (!purchased) {
@@ -391,6 +518,14 @@ async function mainLoop() {
     console.error('[ERROR] Error in main loop:', error);
     isRunning = false;
     
+    await sendWebhook('error', {
+      message: `⚠️ Error in main loop`,
+      color: 15158332,
+      fields: [
+        { name: 'Error', value: error.message || 'Unknown error' }
+      ]
+    });
+    
     // Retry after delay
     await sleep(CONFIG.delayBetweenCycles);
     if (!isAfkDetected) {
@@ -428,6 +563,16 @@ function createBot() {
   bot.on('spawn', async () => {
     console.log('[BOT] Spawned in game');
     console.log(`[BOT] Waiting ${CONFIG.delayAfterJoin}ms before starting...`);
+    
+    await sendWebhook('startup', {
+      message: `🤖 Bot connected and spawned`,
+      color: 3066993,
+      fields: [
+        { name: 'Server', value: CONFIG.host, inline: true },
+        { name: 'Username', value: bot.username, inline: true }
+      ]
+    });
+    
     await sleep(CONFIG.delayAfterJoin);
     
     if (!isRunning && !isAfkDetected) {
@@ -444,10 +589,44 @@ function createBot() {
     if (normalized.includes('teleported to') && normalized.includes('afk')) {
       handleAfkDetection();
     }
+    
+    // Check for map sale - format: "Username bought your Map for $price"
+    // Expected message format examples:
+    //   "PlayerName bought your Map for $9.9K"
+    //   "Test User bought your Map for $9900"  (usernames can have spaces)
+    //   "SomeGuy123 bought your Map for $10,000"
+    const saleMatch = msg.match(/(.+?)\s+bought your Map for \$([0-9,.]+)(K?)/i);
+    if (saleMatch) {
+      const buyer = saleMatch[1].trim();
+      const priceStr = `Price: $${saleMatch[2]}${saleMatch[3] || ''}`;
+      
+      const salePrice = parsePrice(priceStr);
+      if (salePrice === null) {
+        console.log(`[SALE] Invalid price format "$${saleMatch[2]}${saleMatch[3] || ''}", skipping webhook`);
+        return;
+      }
+      
+      console.log(`[SALE] ${buyer} bought a map for $${salePrice}`);
+      sendWebhook('sale', {
+        message: `💰 Sold a map!`,
+        color: 5763719,
+        fields: [
+          { name: 'Buyer', value: buyer, inline: true },
+          { name: 'Price', value: `$${salePrice}`, inline: true }
+        ]
+      });
+    }
   });
   
   bot.on('kicked', (reason) => {
     console.log(`[BOT] Kicked: ${reason}`);
+    sendWebhook('error', {
+      message: `❌ Bot was kicked from server`,
+      color: 15158332,
+      fields: [
+        { name: 'Reason', value: reason }
+      ]
+    });
     reconnect();
   });
   
@@ -457,8 +636,35 @@ function createBot() {
   });
   
   bot.on('error', (err) => {
+    // Suppress common harmless packet errors
+    if (isPartialPacketError(err)) {
+      // These are harmless protocol parsing warnings, suppress them
+      return;
+    }
+    
     console.error('[BOT] Error:', err);
+    sendWebhook('error', {
+      message: `⚠️ Bot encountered an error`,
+      color: 15158332,
+      fields: [
+        { name: 'Error', value: err.message || 'Unknown error' }
+      ]
+    });
   });
+  
+  // Suppress packet_dump errors for partial packets
+  // Note: This accesses mineflayer's internal _client property as a workaround
+  // for suppressing harmless partial packet warnings. This may break if mineflayer
+  // changes its internal structure. Tested with mineflayer 4.35.0
+  if (bot._client) {
+    bot._client.on('error', (err) => {
+      if (isPartialPacketError(err)) {
+        // Suppress these errors - they're harmless protocol parsing warnings
+        return;
+      }
+      console.error('[CLIENT] Error:', err);
+    });
+  }
 }
 
 function reconnect() {
