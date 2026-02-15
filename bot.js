@@ -430,6 +430,21 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
         });
       };
       
+      // Declare timeout variable early so it can be referenced in handlers
+      let timeout;
+      
+      const messageHandler = (msg) => {
+        const normalized = normalizeText(msg);
+        if (normalized.includes('already bought')) {
+          console.log('[AH] Item was already bought, retrying...');
+          alreadyBoughtMessageReceived = true;
+          clearTimeout(timeout);
+          bot.off('windowClose', windowCloseHandler);
+          bot.off('messagestr', messageHandler);
+          safeResolve(false);
+        }
+      };
+      
       // Listen for window close
       const windowCloseHandler = () => {
         console.log('[AH] Window closed after purchase attempt');
@@ -453,8 +468,8 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
       
       bot.once('windowClose', windowCloseHandler);
       
-      // Timeout after 5 seconds (3s for window close + 2s for message verification)
-      const timeout = setTimeout(() => {
+      // Timeout after 5 seconds if window doesn't close or verification doesn't complete
+      timeout = setTimeout(() => {
         bot.off('windowClose', windowCloseHandler);
         bot.off('messagestr', messageHandler);
         
@@ -470,18 +485,6 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
           safeResolve(false);
         }
       }, 5000);
-      
-      const messageHandler = (msg) => {
-        const normalized = normalizeText(msg);
-        if (normalized.includes('already bought')) {
-          console.log('[AH] Item was already bought, retrying...');
-          alreadyBoughtMessageReceived = true;
-          clearTimeout(timeout);
-          bot.off('windowClose', windowCloseHandler);
-          bot.off('messagestr', messageHandler);
-          safeResolve(false);
-        }
-      };
       
       bot.on('messagestr', messageHandler);
     });
