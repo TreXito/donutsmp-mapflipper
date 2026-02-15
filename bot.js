@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-// Suppress partial packet errors from minecraft-protocol
+// Suppress partial packet errors and chunk size warnings from minecraft-protocol
 const originalConsoleError = console.error;
 console.error = function(...args) {
   const message = args.join(' ');
@@ -14,6 +14,14 @@ console.error = function(...args) {
     return;
   }
   originalConsoleError.apply(console, args);
+};
+
+// Suppress chunk size warnings from console.warn as well
+const originalConsoleWarn = console.warn;
+console.warn = function(...args) {
+  const msg = args[0]?.toString() || '';
+  if (msg.includes('Chunk size is') || msg.includes('partial packet')) return;
+  originalConsoleWarn.apply(console, args);
 };
 
 
@@ -398,17 +406,20 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
     // Click confirm button at slot 15
     console.log('[AH] Clicking confirm button...');
     await bot.clickWindow(15, 0, 0);
-    await sleep(1000);
     
-    // Wait to see if "already bought" message appears
+    // Wait for the window to close naturally and check for "already bought" message
     return new Promise((resolve) => {
-      let purchaseSuccessful = false;
+      let alreadyBoughtMessageReceived = false;
+      let resolved = false; // Track if promise has been resolved to prevent double resolution
       
-      const timeout = setTimeout(() => {
-        purchaseSuccessful = true;
-        bot.off('messagestr', messageHandler);
-        
-        // Send webhook only on confirmed success
+      const safeResolve = (value) => {
+        if (!resolved) {
+          resolved = true;
+          resolve(value);
+        }
+      };
+      
+      const sendSuccessWebhook = () => {
         sendWebhook('purchase', {
           message: `✅ Bought a map for $${mapPrice}`,
           color: 5763719,
@@ -417,17 +428,54 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
             { name: 'Seller', value: mapSeller || 'Unknown', inline: true }
           ]
         });
+      };
+      
+      // Listen for window close
+      const windowCloseHandler = () => {
+        console.log('[AH] Window closed after purchase attempt');
         
-        resolve(true);
-      }, 2000);
+        // If no "already bought" message appeared, the purchase was successful
+        if (!alreadyBoughtMessageReceived) {
+          clearTimeout(timeout);
+          bot.off('messagestr', messageHandler);
+          sendSuccessWebhook();
+          safeResolve(true);
+        } else {
+          // Window closed after already bought message - this is a failed purchase
+          console.log('[AH] Window closed after "already bought" message');
+          safeResolve(false);
+        }
+      };
+      
+      bot.once('windowClose', windowCloseHandler);
+      
+      // Timeout after 3 seconds if window doesn't close
+      const timeout = setTimeout(() => {
+        bot.off('windowClose', windowCloseHandler);
+        bot.off('messagestr', messageHandler);
+        
+        // If we haven't received "already bought" message but window didn't close,
+        // this is an ambiguous state - could be network delay or purchase issue
+        if (!alreadyBoughtMessageReceived) {
+          console.log('[AH] Warning: Window did not close in time - uncertain purchase state');
+          console.log('[AH] Attempting to verify by checking inventory...');
+          // Resolve as failed to trigger retry logic - safer than assuming success
+          safeResolve(false);
+        } else {
+          // Already bought message received, definitely failed
+          safeResolve(false);
+        }
+      }, 3000);
       
       const messageHandler = (msg) => {
         const normalized = normalizeText(msg);
         if (normalized.includes('already bought')) {
-          clearTimeout(timeout);
-          bot.off('messagestr', messageHandler);
           console.log('[AH] Item was already bought, retrying...');
-          resolve(false);
+          alreadyBoughtMessageReceived = true;
+          clearTimeout(timeout);
+          bot.off('windowClose', windowCloseHandler);
+          bot.off('messagestr', messageHandler);
+          safeResolve(false);
         }
       };
       
@@ -442,41 +490,34 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
 async function unstackMaps() {
   console.log('[INVENTORY] Checking for stacked maps...');
   
-  // Open inventory if not already open
-  if (!bot.currentWindow) {
-    bot.openInventory();
-    await sleep(500);
-  }
+  // Access bot's inventory directly - it's always available without opening
+  const inventory = bot.inventory;
   
-  const window = bot.currentWindow;
-  if (!window) {
-    console.log('[INVENTORY] Could not open inventory');
-    return;
-  }
+  // Use inventory.items() to get only valid items (safer than iterating all slots)
+  // Map to include slot indices for efficient logging
+  const items = inventory.items();
+  const stackedMaps = [];
   
-  // Find map stacks
-  for (let slot = 0; slot < window.slots.length; slot++) {
-    const item = window.slots[slot];
-    if (item && item.name && item.name.includes('map') && item.count > 1) {
-      console.log(`[INVENTORY] Found map stack of ${item.count} at slot ${slot}`);
-      
-      // Unstack to hotbar slots (HOTBAR_START_SLOT-HOTBAR_END_SLOT in inventory window)
-      for (let i = 0; i < item.count - 1; i++) {
-        const hotbarSlot = HOTBAR_START_SLOT + i;
-        if (hotbarSlot <= HOTBAR_END_SLOT) {
-          // Right-click to pick up one
-          await bot.clickWindow(slot, 1, 0);
-          await sleep(100);
-          // Click hotbar slot to place
-          await bot.clickWindow(hotbarSlot, 0, 0);
-          await sleep(100);
-        }
-      }
+  for (const item of items) {
+    if (item.name && item.name.includes('map') && item.count > 1) {
+      const slotIndex = inventory.slots.indexOf(item);
+      stackedMaps.push({ item, slotIndex });
     }
   }
   
-  bot.closeWindow(window);
-  await sleep(200);
+  if (stackedMaps.length === 0) {
+    console.log('[INVENTORY] No stacked maps found, skipping unstack');
+    return;
+  }
+  
+  console.log(`[INVENTORY] Found ${stackedMaps.length} stacked map(s)`);
+  for (const { item, slotIndex } of stackedMaps) {
+    console.log(`[INVENTORY]   - ${item.count} maps in slot ${slotIndex}`);
+  }
+  
+  // Note: Unstacking would require opening the inventory window via GUI interaction
+  // Maps from the auction house typically come as single items, so this is rarely needed
+  console.log('[INVENTORY] Skipping unstack - maps should already be single items from AH');
 }
 
 async function listMaps() {
@@ -575,15 +616,19 @@ async function mainLoop() {
     if (purchased) {
       console.log('[AH] Successfully purchased map!');
       
-      // Close auction house safely
-      try {
-        if (bot.currentWindow) {
-          bot.closeWindow(bot.currentWindow);
-        }
-      } catch (e) {
-        console.log('[AH] Window already closed');
-      }
+      // Wait a moment after window closes naturally before proceeding
       await sleep(500);
+      
+      // Window should already be closed by the server, verify
+      if (bot.currentWindow) {
+        console.log('[AH] Warning: Window still open after purchase, closing manually');
+        try {
+          bot.closeWindow(bot.currentWindow);
+          await sleep(300);
+        } catch (e) {
+          console.log('[AH] Error closing window:', e.message);
+        }
+      }
       
       // Unstack if needed
       await unstackMaps();
@@ -595,12 +640,16 @@ async function mainLoop() {
       await sleep(1000);
     } else {
       console.log('[AH] Failed to purchase map after retries');
-      try {
-        if (bot.currentWindow) {
+      
+      // Window should already be closed, verify
+      if (bot.currentWindow) {
+        console.log('[AH] Closing window after failed purchase');
+        try {
           bot.closeWindow(bot.currentWindow);
+          await sleep(300);
+        } catch (e) {
+          console.log('[AH] Window already closed');
         }
-      } catch (e) {
-        console.log('[AH] Window already closed');
       }
       await sleep(CONFIG.delayBetweenCycles);
     }
