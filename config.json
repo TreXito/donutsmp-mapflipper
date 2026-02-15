@@ -8,6 +8,7 @@
   "sellPrice": "9.9k",
   "delayBetweenCycles": 5000,
   "delayAfterJoin": 5000,
+  "debugEvents": false,
   "webhook": {
     "enabled": false,
     "url": "",
