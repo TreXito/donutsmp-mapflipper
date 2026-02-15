@@ -409,29 +409,28 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
     
     // Wait for the window to close naturally and check for "already bought" message
     return new Promise((resolve) => {
-      let purchaseSuccessful = false;
-      let windowClosed = false;
+      let alreadyBoughtMessageReceived = false;
+      
+      const sendSuccessWebhook = () => {
+        sendWebhook('purchase', {
+          message: `✅ Bought a map for $${mapPrice}`,
+          color: 5763719,
+          fields: [
+            { name: 'Price', value: `$${mapPrice}`, inline: true },
+            { name: 'Seller', value: mapSeller || 'Unknown', inline: true }
+          ]
+        });
+      };
       
       // Listen for window close
       const windowCloseHandler = () => {
         console.log('[AH] Window closed after purchase attempt');
-        windowClosed = true;
         
         // If no "already bought" message appeared, the purchase was successful
-        if (!purchaseSuccessful) {
+        if (!alreadyBoughtMessageReceived) {
           clearTimeout(timeout);
           bot.off('messagestr', messageHandler);
-          
-          // Send webhook only on confirmed success
-          sendWebhook('purchase', {
-            message: `✅ Bought a map for $${mapPrice}`,
-            color: 5763719,
-            fields: [
-              { name: 'Price', value: `$${mapPrice}`, inline: true },
-              { name: 'Seller', value: mapSeller || 'Unknown', inline: true }
-            ]
-          });
-          
+          sendSuccessWebhook();
           resolve(true);
         }
       };
@@ -444,18 +443,9 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
         bot.off('messagestr', messageHandler);
         
         // If we haven't received "already bought" message, assume success
-        if (!purchaseSuccessful) {
+        if (!alreadyBoughtMessageReceived) {
           console.log('[AH] Window did not close in time, assuming success');
-          
-          sendWebhook('purchase', {
-            message: `✅ Bought a map for $${mapPrice}`,
-            color: 5763719,
-            fields: [
-              { name: 'Price', value: `$${mapPrice}`, inline: true },
-              { name: 'Seller', value: mapSeller || 'Unknown', inline: true }
-            ]
-          });
-          
+          sendSuccessWebhook();
           resolve(true);
         }
       }, 3000);
@@ -464,7 +454,7 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
         const normalized = normalizeText(msg);
         if (normalized.includes('already bought')) {
           console.log('[AH] Item was already bought, retrying...');
-          purchaseSuccessful = true;
+          alreadyBoughtMessageReceived = true;
           clearTimeout(timeout);
           bot.off('windowClose', windowCloseHandler);
           bot.off('messagestr', messageHandler);
