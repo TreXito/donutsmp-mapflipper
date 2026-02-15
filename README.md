@@ -1,6 +1,29 @@
 # DonutSMP Map Flipper Bot
 
-A Mineflayer bot that automates buying cheap maps from the auction house on donutsmp.net and relisting them at a higher price.
+A Minecraft bot that automates buying cheap maps from the auction house on donutsmp.net and relisting them at a higher price.
+
+## 🎯 Available Versions
+
+This project is available in two implementations:
+
+### 🦀 **Rust/Azalea Version (Recommended)**
+- **Better performance** with native compilation
+- **Type safety** and memory efficiency
+- **Native binaries** for all platforms
+- **See**: [README-RUST.md](README-RUST.md) for Rust-specific documentation
+- **Status**: ✅ Core functionality implemented, window interaction in development
+
+### 📦 **JavaScript/Mineflayer Version (Original)**
+- **Mature implementation** with full features
+- **Easy to modify** and understand
+- **Node.js based** - cross-platform
+- **Status**: ✅ Fully functional
+
+---
+
+## JavaScript/Mineflayer Version
+
+A Mineflayer bot for flipping maps on DonutSMP auction house.
 
 ## Features
 
