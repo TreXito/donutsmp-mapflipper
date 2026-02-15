@@ -2,22 +2,34 @@
 
 A Minecraft bot that automates buying cheap maps from the auction house on donutsmp.net and relisting them at a higher price.
 
+## 🚀 Quick Start
+
+**Want to get started immediately?** → [QUICKSTART.md](QUICKSTART.md)
+
+**Wondering what works?** → [STATUS.md](STATUS.md)
+
+**Check your system:** Run `./check-system.sh`
+
+---
+
 ## 🎯 Available Versions
 
 This project is available in two implementations:
 
-### 🦀 **Rust/Azalea Version (Recommended)**
-- **Better performance** with native compilation
-- **Type safety** and memory efficiency
-- **Native binaries** for all platforms
-- **See**: [README-RUST.md](README-RUST.md) for Rust-specific documentation
-- **Status**: ✅ Core functionality implemented, window interaction in development
-
-### 📦 **JavaScript/Mineflayer Version (Original)**
-- **Mature implementation** with full features
+### 📦 **JavaScript/Mineflayer Version (RECOMMENDED)**
+- **Status**: ✅ **FULLY FUNCTIONAL** - Use this!
+- **Mature implementation** with all features working
 - **Easy to modify** and understand
 - **Node.js based** - cross-platform
-- **Status**: ✅ Fully functional
+- **Get started**: See [QUICKSTART.md](QUICKSTART.md)
+
+### 🦀 **Rust/Azalea Version**
+- **Status**: ⚠️ **INCOMPLETE** (~40% done) - Don't use yet
+- **Better performance** when complete
+- **Type safety** and memory efficiency  
+- **Missing**: Auction house interaction, purchasing, listing
+- **See**: [README-RUST.md](README-RUST.md) for Rust-specific documentation
+- **Complete it**: See [RUST-TODO.md](RUST-TODO.md) for what's needed
 
 ---
 
