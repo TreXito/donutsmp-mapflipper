@@ -10,10 +10,13 @@ use regex::Regex;
 mod config;
 mod price_parser;
 mod webhook;
+mod items;
+mod inventory;
 
 use config::Config;
 use price_parser::parse_price;
 use webhook::send_webhook;
+use inventory::{open_auction_house, find_cheap_maps, purchase_map, list_maps};
 
 #[derive(Clone, Component)]
 pub struct BotState {
@@ -165,18 +168,57 @@ async fn main_loop(bot: Client, state: BotState) {
     }
 }
 
-async fn run_cycle(bot: Client, _state: BotState) -> Result<bool> {
+async fn run_cycle(bot: Client, state: BotState) -> Result<bool> {
     println!("[CYCLE] Starting new cycle");
     
-    // Open auction house
+    // Step 1: Open auction house
     println!("[AH] Opening auction house...");
-    bot.chat("/ah map");
     
-    // Wait for window to open - TODO: implement window handling
-    sleep(Duration::from_millis(1000)).await;
-    
-    // For now, just a placeholder
-    println!("[AH] Window handling not yet implemented");
+    match open_auction_house(&bot, &state.config).await {
+        Ok(_container) => {
+            println!("[AH] Auction house opened successfully");
+            
+            // Step 2: Find cheap maps
+            // Note: _container would be the actual container object from Azalea
+            // For now, we pass () as placeholder
+            if let Some(map) = find_cheap_maps(&(), state.config.max_buy_price) {
+                println!("[AH] Found cheap map: ${} from {}", map.price, map.seller);
+                
+                // Step 3: Attempt purchase
+                match purchase_map(&bot, &(), &map, &state.config).await {
+                    Ok(true) => {
+                        println!("[AH] Purchase successful!");
+                        
+                        // Step 4: List the purchased map
+                        if let Err(e) = list_maps(&bot, &state.config).await {
+                            eprintln!("[LISTING] Error listing maps: {}", e);
+                        }
+                        
+                        return Ok(true);
+                    }
+                    Ok(false) => {
+                        println!("[AH] Purchase failed (already bought)");
+                    }
+                    Err(e) => {
+                        eprintln!("[AH] Purchase error: {}", e);
+                    }
+                }
+            } else {
+                println!("[AH] No cheap maps found under ${}", state.config.max_buy_price);
+            }
+        }
+        Err(e) => {
+            // This error is expected since window interaction isn't implemented yet
+            if !e.to_string().contains("not yet implemented") {
+                eprintln!("[AH] Error opening auction house: {}", e);
+            }
+            
+            // Fallback: Just send the command for now
+            println!("[AH] Sending /ah map command (window handling not implemented)");
+            bot.chat("/ah map");
+            sleep(Duration::from_millis(1000)).await;
+        }
+    }
     
     Ok(false)
 }
