@@ -1,3 +1,14 @@
+// === MUST BE FIRST LINES OF FILE ===
+const _stdoutWrite = process.stdout.write.bind(process.stdout);
+const _stderrWrite = process.stderr.write.bind(process.stderr);
+const _shouldFilterLog = (chunk) => {
+  const s = typeof chunk === 'string' ? chunk : chunk.toString();
+  return s.includes('Chunk size is') || s.includes('partial packet') || s.includes('player_info');
+};
+process.stdout.write = function(chunk, ...a) { if (_shouldFilterLog(chunk)) return true; return _stdoutWrite(chunk, ...a); };
+process.stderr.write = function(chunk, ...a) { if (_shouldFilterLog(chunk)) return true; return _stderrWrite(chunk, ...a); };
+// === END FILTER ===
+
 const mineflayer = require('mineflayer');
 const fs = require('fs');
 const path = require('path');
@@ -77,6 +88,7 @@ const MIN_RETRY_DELAY = 3000; // Minimum delay before retry after errors (ms)
 let bot;
 let isAfkDetected = false;
 let isRunning = false;
+let lastStateId = 0; // Track stateId for window_click packets
 
 // Small caps to ASCII mapping for AFK detection
 const SMALL_CAPS_MAP = {
@@ -144,6 +156,63 @@ function parsePrice(loreString) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Custom window click function that uses tracked stateId to prevent "Invalid sequence" kicks.
+ * This is necessary because mineflayer's bot.clickWindow() doesn't track stateId correctly in 1.21.1+.
+ * 
+ * @param {number} windowId - The window ID (use window.id from the opened window)
+ * @param {number} slot - The slot number to click (0-based index)
+ * @param {number} mouseButton - Mouse button: 0 = left, 1 = right, 2 = middle
+ * @param {number} mode - Click mode: 0 = normal click, 1 = shift-click, 2 = number key, etc.
+ */
+function clickWindowSlot(windowId, slot, mouseButton, mode) {
+  if (!bot || !bot._client) {
+    console.error('[CLICK] Bot or client not available for window click');
+    return;
+  }
+  
+  console.log(`[CLICK] Clicking window ${windowId}, slot ${slot}, stateId ${lastStateId}`);
+  
+  bot._client.write('window_click', {
+    windowId: windowId,
+    slot: slot,
+    mouseButton: mouseButton,
+    mode: mode,
+    stateId: lastStateId,
+    // cursorItem.present: false means no item is on the cursor
+    cursorItem: { present: false },
+    // changedSlots: [] tells the server we're not predicting slot changes - let the server handle it
+    changedSlots: []
+  });
+}
+
+// Setup stateId tracking from server packets
+// Must be called after bot is created
+function setupStateIdTracking() {
+  if (!bot || !bot._client) {
+    console.error('[STATEID] Bot or client not available for state tracking setup');
+    return;
+  }
+  
+  // Track stateId from window_items packets
+  bot._client.on('window_items', (packet) => {
+    if (packet.stateId !== undefined) {
+      lastStateId = packet.stateId;
+      console.log(`[STATEID] Updated from window_items: ${lastStateId}`);
+    }
+  });
+  
+  // Track stateId from set_slot packets
+  bot._client.on('set_slot', (packet) => {
+    if (packet.stateId !== undefined) {
+      lastStateId = packet.stateId;
+      console.log(`[STATEID] Updated from set_slot: ${lastStateId}`);
+    }
+  });
+  
+  console.log('[STATEID] State ID tracking initialized');
 }
 
 async function sendWebhook(event, data) {
@@ -230,7 +299,7 @@ async function handleAfkDetection() {
         clearTimeout(timeout);
         console.log('[AFK] Hub window opened, selecting slot 5');
         await sleep(200);
-        bot.clickWindow(5, 0, 0);
+        clickWindowSlot(window.id, 5, 0, 0);
         await sleep(500);
         resolve();
       });
@@ -312,41 +381,21 @@ function findCheapMap(window) {
     }
   }
   
-  console.log(`[AH] Window type: ${window.type}, Total slots: ${window.slots.length}, Container slots: ${containerSize}`);
-  console.log(`[AH] Scanning slots 0-${containerSize - 1} (container only, excluding player inventory)`);
-  
-  let itemsWithData = 0;
+  console.log(`[AH] Scanning ${containerSize} container slots for cheap maps under $${CONFIG.maxBuyPrice}...`);
   
   // ONLY scan container slots, NOT player inventory
   for (let slot = 0; slot < containerSize; slot++) {
     const item = window.slots[slot];
     if (!item) continue;
     
-    itemsWithData++;
-    console.log(`[AH DEBUG] === Slot ${slot} ===`);
-    console.log(`[AH DEBUG] Item name: ${item.name || 'unknown'}`);
-    console.log(`[AH DEBUG] Item displayName: ${item.displayName || 'unknown'}`);
-    console.log(`[AH DEBUG] Item count: ${item.count || 1}`);
-    
     // Check if item has components (1.21.1+)
-    if (!item.components) {
-      console.log(`[AH DEBUG] No components found for slot ${slot}`);
-      continue;
-    }
+    if (!item.components) continue;
     
     try {
       // Extract lore using the new component-based function
       const loreLines = extractLore(item);
       
-      if (loreLines.length === 0) {
-        console.log(`[AH DEBUG] No lore found for slot ${slot}`);
-        continue;
-      }
-      
-      console.log(`[AH DEBUG] Lore (${loreLines.length} lines):`);
-      for (let i = 0; i < loreLines.length; i++) {
-        console.log(`[AH DEBUG]   Line ${i}: ${loreLines[i]}`);
-      }
+      if (loreLines.length === 0) continue;
       
       // Parse lore lines for price and seller
       let price = null;
@@ -355,7 +404,6 @@ function findCheapMap(window) {
       for (const lineText of loreLines) {
         if (!price && lineText.includes('Price:')) {
           price = parsePrice(lineText);
-          console.log(`[AH DEBUG]   Extracted price: ${price}`);
         }
         
         // Try to find seller name in lore
@@ -364,7 +412,6 @@ function findCheapMap(window) {
           const sellerMatch = clean.match(/Seller:\s*(.+)/i);
           if (sellerMatch) {
             seller = sellerMatch[1].trim();
-            console.log(`[AH DEBUG]   Extracted seller: ${seller}`);
           }
         }
         
@@ -374,24 +421,17 @@ function findCheapMap(window) {
         }
       }
       
-      if (price !== null) {
-        console.log(`[AH DEBUG] Item price: $${price}, max buy price: $${CONFIG.maxBuyPrice}`);
-        if (price < CONFIG.maxBuyPrice) {
-          console.log(`[AH] Found cheap map at slot ${slot}: $${price}`);
-          return { slot, price, seller };
-        } else {
-          console.log(`[AH DEBUG] Price too high, skipping`);
-        }
-      } else {
-        console.log(`[AH DEBUG] Could not extract price from lore`);
+      if (price !== null && price < CONFIG.maxBuyPrice) {
+        console.log(`[AH] ✓ Found cheap map at slot ${slot}: $${price} (seller: ${seller || 'unknown'})`);
+        return { slot, price, seller };
       }
     } catch (error) {
-      console.error(`[AH DEBUG] Error parsing slot ${slot}:`, error);
+      console.error(`[AH] Error parsing slot ${slot}:`, error.message);
       continue;
     }
   }
   
-  console.log(`[AH] Scanned ${itemsWithData} items in container slots, found no cheap maps under $${CONFIG.maxBuyPrice}`);
+  console.log(`[AH] No cheap maps found under $${CONFIG.maxBuyPrice}`);
   return null;
 }
 
@@ -399,13 +439,15 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
   console.log(`[AH] Attempting to buy map at slot ${mapSlot}...`);
   
   try {
-    // Click the map slot
-    await bot.clickWindow(mapSlot, 0, 0);
-    await sleep(500);
+    // Click the map slot using manual window click with stateId
+    clickWindowSlot(window.id, mapSlot, 0, 0);
+    // Wait 1 second for the server to update the window state
+    // Longer delay needed for reliable state updates in 1.21.1 protocol
+    await sleep(1000);
     
     // Click confirm button at slot 15
     console.log('[AH] Clicking confirm button...');
-    await bot.clickWindow(15, 0, 0);
+    clickWindowSlot(window.id, 15, 0, 0);
     
     // Wait for the window to close naturally and check for "already bought" message
     return new Promise((resolve) => {
@@ -723,6 +765,8 @@ function createBot() {
   
   bot = mineflayer.createBot(botOptions);
   
+  // Setup stateId tracking for manual window clicks
+  setupStateIdTracking();
   // Optional event debugger to diagnose window opening issues
   // WARNING: This overrides bot.emit which could potentially interfere with
   // internal mineflayer event handling. Only enable for debugging purposes.
