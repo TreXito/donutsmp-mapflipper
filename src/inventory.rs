@@ -231,8 +231,10 @@ pub async fn purchase_map(
 ///
 /// This function now only lists maps from specific slots to avoid listing
 /// the same maps over and over. Limits listings to maxListingsPerCycle.
+/// 
+/// Flow: Hold item in hotbar -> /ah sell <price> -> GUI opens -> click slot 15
 ///
-/// Reference: bot.js lines 572-610
+/// Reference: bot.js lines 592-725
 pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -> Result<()> {
     if slots_to_list.is_empty() {
         println!("[LISTING] No new maps to list");
@@ -276,11 +278,32 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                     if item_name.to_lowercase().contains("map") {
                         println!("[LISTING] Listing map from slot {} at ${}...", slot_idx, config.sell_price);
                         
-                        // Send /ah sell command
+                        // Step 1: Send /ah sell command
+                        // The item should already be held/selected from hotbar
                         bot.chat(&format!("/ah sell {}", config.sell_price));
                         
-                        // Wait between listings to avoid spam
-                        sleep(Duration::from_millis(500)).await;
+                        // Step 2: Wait for confirmation GUI to open
+                        println!("[LISTING] Waiting for confirmation GUI...");
+                        let timeout_ticks = (config.window_timeout + MS_PER_TICK - 1) / MS_PER_TICK;
+                        
+                        match bot.wait_for_container_open(Some(timeout_ticks as usize)).await {
+                            Some(confirm_container) => {
+                                println!("[LISTING] Confirmation GUI opened (container ID: {})", confirm_container.id());
+                                
+                                // Step 3: Click slot 15 to confirm listing
+                                println!("[LISTING] Clicking confirm button at slot 15...");
+                                confirm_container.left_click(15_usize);
+                                
+                                // Keep container handle alive
+                                std::mem::forget(confirm_container);
+                                
+                                println!("[LISTING] Map listed successfully");
+                            }
+                            None => {
+                                println!("[LISTING] ERROR: Confirmation GUI did not open, skipping this map");
+                                continue;
+                            }
+                        }
                     }
                 }
             }

@@ -663,8 +663,8 @@ async function listMaps() {
       bot.setQuickBarSlot(hotbarSlotIndex);
       await sleep(200);
       
-      // Send /ah sell command
-      bot.chat(`/ah sell ${CONFIG.sellPrice}`);
+      // Send /ah list command
+      bot.chat(`/ah list ${CONFIG.sellPrice}`);
       
       // Wait for confirmation window to open
       try {

@@ -14,7 +14,7 @@ All missing functionality has been implemented:
    - `open_auction_house()` - Opens /ah map window ✅
    - `find_cheap_maps()` - Searches container for cheap maps ✅
    - `purchase_map()` - Buys map with proper clicking ✅
-   - `list_maps()` - Lists maps via /ah sell command ✅
+   - `list_maps()` - Lists maps via /ah list command ✅
 
 2. **`src/main.rs`** - Complete integration
    - Updated `run_cycle()` with full flow ✅
@@ -344,7 +344,7 @@ All missing Azalea APIs have been successfully researched and implemented. The b
 2. Check hotbar slots 0-8
 3. For each map:
    - Select hotbar slot
-   - Send `/ah sell <price>` command
+   - Send `/ah list <price>` command
    - Wait 500ms
 
 **Challenges**:
