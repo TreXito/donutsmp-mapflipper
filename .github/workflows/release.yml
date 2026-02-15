@@ -52,25 +52,31 @@ jobs:
           # Create directories for each platform
           mkdir -p releases/windows releases/linux releases/mac
           
-          # Common files
-          COMMON_FILES="bot.js package.json package-lock.json config.template.json .env.example README.md LICENSE node_modules"
+          # Copy common files (copy each individually to handle missing files)
+          for dir in windows linux mac; do
+            cp bot.js releases/$dir/
+            cp package.json releases/$dir/
+            cp config.template.json releases/$dir/
+            cp .env.example releases/$dir/
+            cp README.md releases/$dir/
+            cp LICENSE releases/$dir/
+            cp -r node_modules releases/$dir/
+            [ -f package-lock.json ] && cp package-lock.json releases/$dir/ || true
+          done
           
           # Windows release
-          cp -r $COMMON_FILES releases/windows/ 2>/dev/null || true
           echo "@echo off" > releases/windows/start.bat
           echo "node bot.js" >> releases/windows/start.bat
           cd releases/windows && zip -r ../donutsmp-mapflipper-${VERSION}-windows.zip . && cd ../..
           
           # Linux release
-          cp -r $COMMON_FILES releases/linux/ 2>/dev/null || true
-          cp start.sh releases/linux/ 2>/dev/null || true
-          chmod +x releases/linux/start.sh 2>/dev/null || true
+          cp start.sh releases/linux/
+          chmod +x releases/linux/start.sh
           cd releases/linux && tar -czf ../donutsmp-mapflipper-${VERSION}-linux.tar.gz . && cd ../..
           
           # Mac release
-          cp -r $COMMON_FILES releases/mac/ 2>/dev/null || true
-          cp start.sh releases/mac/ 2>/dev/null || true
-          chmod +x releases/mac/start.sh 2>/dev/null || true
+          cp start.sh releases/mac/
+          chmod +x releases/mac/start.sh
           cd releases/mac && tar -czf ../donutsmp-mapflipper-${VERSION}-mac.tar.gz . && cd ../..
       
       - name: Create Release
