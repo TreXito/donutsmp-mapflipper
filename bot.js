@@ -676,6 +676,9 @@ async function listMaps() {
       console.log(`[LISTING] Confirmation window opened (window ID: ${confirmWindow.id})`);
       
       // Item is already selected in the window because it's held in hotbar
+      // Wait for GUI to fully render before clicking (same timing as buying)
+      await sleep(CLICK_CONFIRM_DELAY);
+      
       // Just click the confirm button at slot 15
       console.log('[LISTING] Clicking confirm button at slot 15...');
       clickWindowSlot(confirmWindow.id, 15, 0, 0);
