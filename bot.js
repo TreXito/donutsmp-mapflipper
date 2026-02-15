@@ -410,11 +410,13 @@ function createBot() {
   };
   
   // Add auth if specified (microsoft or offline)
-  if (CONFIG.auth && CONFIG.auth !== 'offline') {
-    botOptions.auth = CONFIG.auth;
-    console.log(`[BOT] Using ${CONFIG.auth} authentication`);
-  } else {
+  if (CONFIG.auth && CONFIG.auth.toLowerCase() === 'microsoft') {
+    botOptions.auth = 'microsoft';
+    console.log('[BOT] Using microsoft authentication');
+  } else if (!CONFIG.auth || CONFIG.auth.toLowerCase() === 'offline') {
     console.log('[BOT] Using offline/cracked authentication');
+  } else {
+    console.warn(`[BOT] Unknown auth type '${CONFIG.auth}', falling back to offline authentication`);
   }
   
   bot = mineflayer.createBot(botOptions);
