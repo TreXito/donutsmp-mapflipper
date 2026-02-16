@@ -1047,8 +1047,8 @@ async function mainLoop() {
     // The bot MUST have zero maps before starting a buy cycle
     const currentMapCount = countMapsInInventory();
     if (currentMapCount > 0) {
-      console.log(`[INVENTORY] Found ${currentMapCount} map(s) in inventory before buy cycle`);
-      console.log('[INVENTORY] Running sell-all cleanup before buying...');
+      console.log(`[INVENTORY] CRITICAL: Found ${currentMapCount} map(s) in inventory - cannot buy while holding maps!`);
+      console.log('[INVENTORY] Running mandatory sell-all cleanup before buying...');
       
       // Run full sell-all routine: unstack all maps and list each one
       await sellAllMaps();
