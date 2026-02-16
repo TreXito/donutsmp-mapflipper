@@ -44,6 +44,11 @@ A Mineflayer bot for flipping maps on DonutSMP auction house.
 - ✅ Anti-AFK detection and handling
 - ✅ Auto-reconnect on disconnect
 - ✅ Map unstacking for bulk listings
+- ✅ **Listing verification** - Verifies each listing worked by checking inventory count
+- ✅ **Automatic retry** - Retries failed listings up to 3 times
+- ✅ **Sell-all cleanup** - Comprehensive routine to clean up accumulated maps
+- ✅ **Periodic maintenance** - Runs sell-all every 10 cycles or 3 minutes
+- ✅ **Sell-only mode** - Run cleanup without buying new maps
 - ✅ Configurable buy/sell prices
 - ✅ Microsoft authentication support
 - ✅ Discord webhook notifications for purchases, sales, and events
@@ -117,6 +122,7 @@ A default `config.json` file is included in the repository. Simply edit it with 
      "maxListingsPerCycle": 20,
      "delayBetweenCycles": 5000,
      "delayAfterJoin": 5000,
+     "mode": "normal",
      "webhook": {
        "enabled": false,
        "url": "",
@@ -159,6 +165,9 @@ Set environment variables to override defaults:
 - `delayAfterJoin`: Wait time after spawning before starting (default: 5000)
 - `windowTimeout`: Timeout for window opening operations in ms (default: 15000)
 - `debugEvents`: Enable event debugging to diagnose window opening issues (default: false) - **Warning: Only use for debugging**
+- `mode`: Bot operation mode (default: 'normal')
+  - `'normal'`: Normal buy/sell operation with automatic cleanup
+  - `'sell-only'`: Only runs sell-all cleanup and exits (for manual inventory cleanup)
 - `webhook`: Webhook configuration for Discord notifications
   - `enabled`: Enable webhook notifications (default: false)
   - `url`: Discord webhook URL
@@ -278,6 +287,63 @@ For offline/cracked servers that don't require authentication:
   "auth": "offline"
 }
 ```
+
+## Advanced Features
+
+### Listing Verification and Auto-Retry
+
+The bot now verifies each listing by checking inventory counts before and after the listing operation:
+
+- **Before listing**: Counts total maps in inventory
+- **After listing**: Counts again to verify the map was removed
+- **If count didn't decrease**: The listing failed - bot retries up to 3 times
+- **After 3 failed attempts**: Logs an error and moves to next map
+
+This prevents maps from silently accumulating in inventory when listings fail.
+
+### Automatic Inventory Cleanup
+
+The bot includes multiple layers of automatic cleanup:
+
+1. **Startup Cleanup**: Runs `sellAllMaps()` on bot startup to clear any leftover maps from previous sessions
+2. **After-Cycle Check**: After each buy+list cycle, checks if more than 5 maps remain in inventory
+   - If threshold exceeded, pauses buying and runs full cleanup
+3. **Periodic Maintenance**: Automatically runs `sellAllMaps()` every 10 buy cycles OR every 3 minutes
+   - Catches any maps that slipped through normal listing
+   - Prevents long-term accumulation
+
+### Sell-Only Mode
+
+For manual inventory cleanup without buying new maps, use sell-only mode:
+
+1. **Edit `config.json`**:
+   ```json
+   {
+     "mode": "sell-only"
+   }
+   ```
+
+2. **Run the bot**:
+   ```bash
+   npm start
+   ```
+
+3. **What happens**:
+   - Bot connects to server
+   - Waits for spawn
+   - Runs comprehensive `sellAllMaps()` routine:
+     - Scans entire inventory for all maps
+     - Unstacks any stacked maps into singles
+     - Lists each map with verification
+   - Logs results (X maps listed, Y failed)
+   - Exits automatically
+
+4. **Return to normal mode**: Set `"mode": "normal"` in config.json
+
+This is useful for:
+- Cleaning up after running the bot for hours
+- Recovering from bot crashes or network issues
+- Testing the listing functionality
 
 ## Usage
 
