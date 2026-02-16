@@ -107,11 +107,11 @@ async fn main() -> Result<()> {
 
 /// Performs startup actions before the main loop begins
 /// Opens the auction house and clicks slot 49 (refresh button), then waits 10 seconds
-async fn perform_startup_actions(bot: Client, config: &Config) -> Result<()> {
+async fn perform_startup_actions(bot: &Client, config: &Config) -> Result<()> {
     println!("[STARTUP] Opening auction house to click refresh button...");
     
     // Open the auction house
-    match open_auction_house(&bot, config).await {
+    match open_auction_house(bot, config).await {
         Ok(Some(_menu)) => {
             println!("[STARTUP] Auction house opened successfully");
             
@@ -162,7 +162,7 @@ async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> 
             }
             
             // Click slot 49 and wait 10 seconds before starting
-            if let Err(e) = perform_startup_actions(bot.clone(), &state.config).await {
+            if let Err(e) = perform_startup_actions(&bot, &state.config).await {
                 eprintln!("[BOT] Error performing startup actions: {}", e);
             }
             
