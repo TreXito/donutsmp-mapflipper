@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use regex::Regex;
 
 mod config;
@@ -105,6 +105,48 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Start AFK farming by sending /afk command and clicking slot 49
+/// This allows the bot to farm shards while flipping auctions
+async fn start_afk_farming(bot: Client, config: &Config) -> Result<()> {
+    println!("[AFK] Starting AFK farming setup...");
+    
+    // Step 1: Send /afk command
+    println!("[AFK] Sending /afk command...");
+    bot.chat("/afk");
+    
+    // Step 2: Wait for protocol timing (300ms to prevent "Invalid sequence" kick)
+    sleep(Duration::from_millis(300)).await;
+    
+    // Step 3: Wait for AFK menu to open with timeout
+    println!("[AFK] Waiting for AFK menu to open...");
+    let timeout_ticks = (config.window_timeout + 50 - 1) / 50; // Convert ms to ticks, round up
+    
+    match bot.wait_for_container_open(Some(timeout_ticks as usize)).await {
+        Some(afk_menu) => {
+            let menu_id = afk_menu.id();
+            println!("[AFK] AFK menu opened with container ID: {}", menu_id);
+            
+            // Step 4: Click slot 49 to go to random AFK location
+            println!("[AFK] Clicking slot 49 to teleport to random AFK location...");
+            afk_menu.left_click(49_usize);
+            
+            // Keep the container handle alive without closing it
+            std::mem::forget(afk_menu);
+            
+            // Step 5: Wait for teleportation to complete
+            sleep(Duration::from_millis(2000)).await;
+            
+            println!("[AFK] AFK farming setup completed successfully");
+            println!("[AFK] Bot will now farm shards while flipping auctions");
+            Ok(())
+        }
+        None => {
+            println!("[AFK] Timeout waiting for AFK menu to open ({}ms)", config.window_timeout);
+            Err(anyhow!("AFK menu did not open after /afk command"))
+        }
+    }
+}
+
 async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> {
     match event {
         Event::Init => {
@@ -125,6 +167,13 @@ async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> 
                 ],
             ).await {
                 eprintln!("[WEBHOOK] Error sending startup webhook: {}", e);
+            }
+            
+            // Execute AFK startup action if enabled
+            if state.config.enable_afk_farming {
+                if let Err(e) = start_afk_farming(bot.clone(), &state.config).await {
+                    eprintln!("[AFK] Failed to start AFK farming: {}", e);
+                }
             }
             
             // Wait before starting main loop

@@ -81,6 +81,8 @@ pub struct Config {
     pub window_timeout: u64,
     #[serde(default, rename = "debugEvents")]
     pub debug_events: bool,
+    #[serde(default, rename = "enableAfkFarming")]
+    pub enable_afk_farming: bool,
     #[serde(default)]
     pub webhook: WebhookConfig,
 }
@@ -125,6 +127,9 @@ impl Config {
                     config.delay_after_join = d;
                 }
             }
+            if let Ok(enable_afk) = std::env::var("ENABLE_AFK_FARMING") {
+                config.enable_afk_farming = enable_afk == "true";
+            }
             
             Ok(config)
         } else {
@@ -167,6 +172,9 @@ impl Config {
             debug_events: std::env::var("DEBUG_EVENTS")
                 .map(|v| v == "true")
                 .unwrap_or(false),
+            enable_afk_farming: std::env::var("ENABLE_AFK_FARMING")
+                .map(|v| v == "true")
+                .unwrap_or(true),
             webhook: WebhookConfig::default(),
         }
     }
