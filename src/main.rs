@@ -58,14 +58,19 @@ async fn main() -> Result<()> {
         } else {
             println!("[CONFIG] Webhook URL: NOT SET - webhooks will not be sent!");
         }
-        let enabled_events: Vec<&str> = vec![
-            if config.webhook.events.purchase { Some("purchase") } else { None },
-            if config.webhook.events.listing { Some("listing") } else { None },
-            if config.webhook.events.sale { Some("sale") } else { None },
-            if config.webhook.events.afk { Some("afk") } else { None },
-            if config.webhook.events.error { Some("error") } else { None },
-            if config.webhook.events.startup { Some("startup") } else { None },
-        ].into_iter().flatten().collect();
+        
+        // Collect enabled events
+        let events = [
+            ("purchase", config.webhook.events.purchase),
+            ("listing", config.webhook.events.listing),
+            ("sale", config.webhook.events.sale),
+            ("afk", config.webhook.events.afk),
+            ("error", config.webhook.events.error),
+            ("startup", config.webhook.events.startup),
+        ];
+        let enabled_events: Vec<&str> = events.iter()
+            .filter_map(|(name, enabled)| if *enabled { Some(*name) } else { None })
+            .collect();
         println!("[CONFIG] Webhook events: {}", enabled_events.join(", "));
     } else {
         println!("[CONFIG] Webhook notifications: DISABLED");

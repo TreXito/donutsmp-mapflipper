@@ -101,7 +101,10 @@ const CONFIG = {
 // Log webhook configuration status
 if (CONFIG.webhook.enabled) {
   console.log('[CONFIG] Webhook notifications: ENABLED');
-  console.log(`[CONFIG] Webhook URL: ${CONFIG.webhook.url ? CONFIG.webhook.url.substring(0, 50) + '...' : 'NOT SET'}`);
+  const urlDisplay = CONFIG.webhook.url ? 
+    (CONFIG.webhook.url.length > 50 ? CONFIG.webhook.url.substring(0, 50) + '...' : CONFIG.webhook.url) : 
+    'NOT SET';
+  console.log(`[CONFIG] Webhook URL: ${urlDisplay}`);
   console.log(`[CONFIG] Webhook events: ${Object.entries(CONFIG.webhook.events).filter(([_, v]) => v).map(([k]) => k).join(', ')}`);
 } else {
   console.log('[CONFIG] Webhook notifications: DISABLED');
