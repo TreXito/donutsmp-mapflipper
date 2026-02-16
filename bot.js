@@ -101,11 +101,23 @@ const CONFIG = {
 // Log webhook configuration status
 if (CONFIG.webhook.enabled) {
   console.log('[CONFIG] Webhook notifications: ENABLED');
-  const urlDisplay = CONFIG.webhook.url ? 
-    (CONFIG.webhook.url.length > 50 ? CONFIG.webhook.url.substring(0, 50) + '...' : CONFIG.webhook.url) : 
-    'NOT SET';
+  
+  // Display webhook URL (truncate if too long)
+  let urlDisplay;
+  if (!CONFIG.webhook.url) {
+    urlDisplay = 'NOT SET';
+  } else if (CONFIG.webhook.url.length > 50) {
+    urlDisplay = CONFIG.webhook.url.substring(0, 50) + '...';
+  } else {
+    urlDisplay = CONFIG.webhook.url;
+  }
   console.log(`[CONFIG] Webhook URL: ${urlDisplay}`);
-  console.log(`[CONFIG] Webhook events: ${Object.entries(CONFIG.webhook.events).filter(([_, v]) => v).map(([k]) => k).join(', ')}`);
+  
+  const enabledEvents = Object.entries(CONFIG.webhook.events)
+    .filter(([_, enabled]) => enabled)
+    .map(([name]) => name)
+    .join(', ');
+  console.log(`[CONFIG] Webhook events: ${enabledEvents}`);
 } else {
   console.log('[CONFIG] Webhook notifications: DISABLED');
 }

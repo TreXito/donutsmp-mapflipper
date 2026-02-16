@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
             ("startup", config.webhook.events.startup),
         ];
         let enabled_events: Vec<&str> = events.iter()
-            .filter_map(|(name, enabled)| if *enabled { Some(*name) } else { None })
+            .filter_map(|(name, enabled)| enabled.then_some(*name))
             .collect();
         println!("[CONFIG] Webhook events: {}", enabled_events.join(", "));
     } else {
