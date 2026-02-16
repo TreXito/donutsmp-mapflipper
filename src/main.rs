@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use regex::Regex;
 
 mod config;
@@ -105,40 +105,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Performs startup actions before the main loop begins
-/// Opens the auction house and clicks slot 49 (refresh button), then waits 10 seconds
-async fn perform_startup_actions(bot: &Client, config: &Config) -> Result<()> {
-    println!("[STARTUP] Opening auction house to click refresh button...");
-    
-    // Open the auction house
-    match open_auction_house(bot, config).await {
-        Ok(Some(_menu)) => {
-            println!("[STARTUP] Auction house opened successfully");
-            
-            // Get the container and click slot 49
-            let container = bot.get_inventory();
-            println!("[STARTUP] Clicking slot 49 (refresh button)...");
-            container.left_click(49_usize);
-            
-            // Keep container alive without closing
-            std::mem::forget(container);
-            
-            // Wait 10 seconds
-            println!("[STARTUP] Waiting 10 seconds...");
-            sleep(Duration::from_secs(10)).await;
-            println!("[STARTUP] Startup actions completed");
-            
-            Ok(())
-        }
-        Ok(None) => {
-            Err(anyhow!("Auction house window did not open"))
-        }
-        Err(e) => {
-            Err(anyhow!("Error opening auction house: {}", e))
-        }
-    }
-}
-
 async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> {
     match event {
         Event::Init => {
@@ -159,11 +125,6 @@ async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> 
                 ],
             ).await {
                 eprintln!("[WEBHOOK] Error sending startup webhook: {}", e);
-            }
-            
-            // Click slot 49 and wait 10 seconds before starting
-            if let Err(e) = perform_startup_actions(&bot, &state.config).await {
-                eprintln!("[BOT] Error performing startup actions: {}", e);
             }
             
             // Wait before starting main loop
