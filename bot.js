@@ -1331,13 +1331,20 @@ function createBot() {
       }
     } catch (error) {
       console.error('[BOT] Error during spawn initialization:', error);
-      await sendWebhook('error', {
-        message: `⚠️ Bot encountered an error during startup`,
-        color: 15158332,
-        fields: [
-          { name: 'Error', value: error.message || String(error), inline: false }
-        ]
-      });
+      
+      // Try to send webhook notification, but don't let webhook errors cause additional problems
+      try {
+        await sendWebhook('error', {
+          message: `⚠️ Bot encountered an error during startup`,
+          color: 15158332,
+          fields: [
+            { name: 'Error', value: error.message || String(error), inline: false }
+          ]
+        });
+      } catch (webhookError) {
+        console.error('[BOT] Failed to send error webhook:', webhookError.message);
+      }
+      
       // Attempt to reconnect after error
       reconnect();
     }
