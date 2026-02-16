@@ -81,7 +81,7 @@ pub struct Config {
     pub window_timeout: u64,
     #[serde(default, rename = "debugEvents")]
     pub debug_events: bool,
-    #[serde(default, rename = "enableAfkFarming")]
+    #[serde(default = "default_true", rename = "enableAfkFarming")]
     pub enable_afk_farming: bool,
     #[serde(default)]
     pub webhook: WebhookConfig,
