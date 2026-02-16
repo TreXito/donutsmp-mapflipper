@@ -61,6 +61,9 @@ pub async fn send_webhook(
         let status = response.status();
         let text = response.text().await?;
         eprintln!("[WEBHOOK] Failed to send webhook (status {}): {}", status, text);
+        return Err(anyhow::anyhow!("Webhook request failed with status {}", status));
+    } else {
+        println!("[WEBHOOK] Successfully sent {} webhook", event);
     }
     
     Ok(())
