@@ -147,6 +147,7 @@ let isRunning = false;
 let lastStateId = 0; // Track stateId for window_click packets
 let buyCycleCount = 0; // Track number of buy cycles for periodic maintenance
 let lastMaintenanceTime = 0; // Track last maintenance run time
+let lastMaintenanceCycle = 0; // Track last cycle when maintenance ran
 
 // Small caps to ASCII mapping for AFK detection
 const SMALL_CAPS_MAP = {
@@ -720,6 +721,7 @@ async function sellAllMaps() {
         
         try {
           // Right-click stack to pick up 1 map
+          // Window ID 0 is the player inventory (this is standard in Minecraft protocol)
           clickWindowSlot(0, stackSlot, 1, 0);
           await sleep(UNSTACK_DELAY);
           
@@ -1150,14 +1152,22 @@ async function mainLoop() {
       const currentTime = Date.now();
       const timeSinceLastMaintenance = currentTime - lastMaintenanceTime;
       
-      // Skip cycle 0 (startup already ran cleanup) and check for cycle interval or time interval
-      if ((buyCycleCount > 0 && buyCycleCount % MAINTENANCE_CYCLE_INTERVAL === 0) || 
-          (lastMaintenanceTime > 0 && timeSinceLastMaintenance >= MAINTENANCE_TIME_INTERVAL)) {
+      // Check if we've reached the cycle interval and haven't run maintenance for this interval yet
+      const shouldRunCycleMaintenance = buyCycleCount > 0 && 
+                                        buyCycleCount % MAINTENANCE_CYCLE_INTERVAL === 0 && 
+                                        buyCycleCount !== lastMaintenanceCycle;
+      
+      // Check if enough time has passed since last maintenance
+      const shouldRunTimeMaintenance = lastMaintenanceTime > 0 && 
+                                       timeSinceLastMaintenance >= MAINTENANCE_TIME_INTERVAL;
+      
+      if (shouldRunCycleMaintenance || shouldRunTimeMaintenance) {
         console.log('[MAINTENANCE] Running periodic sell-all cleanup...');
         console.log(`[MAINTENANCE] Cycles since startup: ${buyCycleCount}, Time since last maintenance: ${Math.round(timeSinceLastMaintenance / 1000)}s`);
         
         await sellAllMaps();
         lastMaintenanceTime = currentTime;
+        lastMaintenanceCycle = buyCycleCount;
       }
       
       // No delay after successful purchase - go immediately to next cycle
