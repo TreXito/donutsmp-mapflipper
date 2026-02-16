@@ -104,7 +104,7 @@ if (CONFIG.webhook.enabled) {
   
   // Display webhook URL (truncate if too long)
   let urlDisplay;
-  if (CONFIG.webhook.url === '' || !CONFIG.webhook.url) {
+  if (!CONFIG.webhook.url) {
     urlDisplay = 'NOT SET';
   } else if (CONFIG.webhook.url.length > 50) {
     urlDisplay = CONFIG.webhook.url.substring(0, 50) + '...';
