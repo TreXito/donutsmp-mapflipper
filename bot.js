@@ -1282,51 +1282,71 @@ function createBot() {
   });
   
   bot.on('spawn', async () => {
-    console.log('[BOT] Spawned in game');
-    console.log(`[BOT] Waiting ${CONFIG.delayAfterJoin}ms before starting...`);
-    
-    await sendWebhook('startup', {
-      message: `🤖 Bot connected and spawned`,
-      color: 3066993,
-      fields: [
-        { name: 'Server', value: CONFIG.host, inline: true },
-        { name: 'Username', value: bot.username, inline: true },
-        { name: 'Mode', value: CONFIG.mode, inline: true }
-      ]
-    });
-    
-    await sleep(CONFIG.delayAfterJoin);
-    
-    // Run startup cleanup to clear any leftover maps from previous sessions
-    console.log('[STARTUP] Running startup cleanup to clear leftover maps...');
-    const startupResult = await sellAllMaps();
-    console.log(`[STARTUP] Cleanup complete: ${startupResult.listed} listed, ${startupResult.failed} failed`);
-    
-    // Initialize maintenance timer
-    lastMaintenanceTime = Date.now();
-    
-    // Check if in sell-only mode
-    if (CONFIG.mode === 'sell-only') {
-      console.log('[SELL-ONLY] Sell-only mode complete. Exiting...');
+    try {
+      console.log('[BOT] Spawned in game');
+      console.log(`[BOT] Waiting ${CONFIG.delayAfterJoin}ms before starting...`);
       
       await sendWebhook('startup', {
-        message: `✅ Sell-only cleanup completed`,
+        message: `🤖 Bot connected and spawned`,
         color: 3066993,
         fields: [
-          { name: 'Listed', value: startupResult.listed.toString(), inline: true },
-          { name: 'Failed', value: startupResult.failed.toString(), inline: true }
+          { name: 'Server', value: CONFIG.host, inline: true },
+          { name: 'Username', value: bot.username, inline: true },
+          { name: 'Mode', value: CONFIG.mode, inline: true }
         ]
       });
       
-      // Disconnect and exit
-      bot.quit('Sell-only mode completed');
-      process.exit(0);
-    }
-    
-    // Normal mode: start main loop
-    if (!isRunning && !isAfkDetected) {
-      console.log('[BOT] Starting main loop');
-      mainLoop();
+      await sleep(CONFIG.delayAfterJoin);
+      
+      // Run startup cleanup to clear any leftover maps from previous sessions
+      console.log('[STARTUP] Running startup cleanup to clear leftover maps...');
+      const startupResult = await sellAllMaps();
+      console.log(`[STARTUP] Cleanup complete: ${startupResult.listed} listed, ${startupResult.failed} failed`);
+      
+      // Initialize maintenance timer
+      lastMaintenanceTime = Date.now();
+      
+      // Check if in sell-only mode
+      if (CONFIG.mode === 'sell-only') {
+        console.log('[SELL-ONLY] Sell-only mode complete. Exiting...');
+        
+        await sendWebhook('startup', {
+          message: `✅ Sell-only cleanup completed`,
+          color: 3066993,
+          fields: [
+            { name: 'Listed', value: startupResult.listed.toString(), inline: true },
+            { name: 'Failed', value: startupResult.failed.toString(), inline: true }
+          ]
+        });
+        
+        // Disconnect and exit
+        bot.quit('Sell-only mode completed');
+        process.exit(0);
+      }
+      
+      // Normal mode: start main loop
+      if (!isRunning && !isAfkDetected) {
+        console.log('[BOT] Starting main loop');
+        mainLoop();
+      }
+    } catch (error) {
+      console.error('[BOT] Error during spawn initialization:', error);
+      
+      // Try to send webhook notification, but don't let webhook errors cause additional problems
+      try {
+        await sendWebhook('error', {
+          message: `⚠️ Bot encountered an error during startup`,
+          color: 15158332,
+          fields: [
+            { name: 'Error', value: error.message || String(error), inline: false }
+          ]
+        });
+      } catch (webhookError) {
+        console.error('[BOT] Failed to send error webhook:', webhookError.message);
+      }
+      
+      // Attempt to reconnect after error
+      reconnect();
     }
   });
   
