@@ -1071,7 +1071,7 @@ async function mainLoop() {
     // Open auction house
     const window = await openAuctionHouse();
     
-    // Find cheap map (scan once)
+    // Find cheap map - initial scan
     console.log(`[AH] Scanning for cheap maps under $${CONFIG.maxBuyPrice}...`);
     let cheapMap = findCheapMap(window);
     
