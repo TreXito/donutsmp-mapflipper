@@ -472,7 +472,7 @@ function findCheapMap(window) {
     }
   }
   
-  console.log(`[AH] Scanning ${containerSize} container slots for cheap maps under $${CONFIG.maxBuyPrice}...`);
+  // Don't log scanning here - let the caller log to avoid duplicates
   
   // ONLY scan container slots, NOT player inventory
   for (let slot = 0; slot < containerSize; slot++) {
@@ -898,6 +898,11 @@ async function listSingleMapWithVerification(hotbarSlotIndex) {
       
       if (mapsAfter < mapsBefore) {
         console.log(`[LISTING] ✓ Listing verified: ${mapsBefore} → ${mapsAfter} maps`);
+        
+        // Wait 1 second before next listing to avoid server cooldown
+        console.log('[LISTING] Waiting 1 second before next listing (cooldown)...');
+        await sleep(1000);
+        
         return true;
       } else {
         console.log(`[LISTING] ✗ Listing FAILED: Map count unchanged (${mapsBefore} → ${mapsAfter})`);
@@ -1038,10 +1043,36 @@ async function mainLoop() {
   isRunning = true;
   
   try {
+    // CRITICAL: Check for ANY maps in inventory before buying
+    // The bot MUST have zero maps before starting a buy cycle
+    const currentMapCount = countMapsInInventory();
+    if (currentMapCount > 0) {
+      console.log(`[INVENTORY] Found ${currentMapCount} map(s) in inventory before buy cycle`);
+      console.log('[INVENTORY] Running sell-all cleanup before buying...');
+      
+      // Run full sell-all routine: unstack all maps and list each one
+      await sellAllMaps();
+      
+      // Verify inventory is now clear
+      const remainingMaps = countMapsInInventory();
+      if (remainingMaps > 0) {
+        console.log(`[WARNING] Still have ${remainingMaps} map(s) after sell-all cleanup!`);
+        console.log('[WARNING] Waiting before retry...');
+        await sleep(5000);
+      } else {
+        console.log('[INVENTORY] ✓ Inventory clear, proceeding to buy cycle');
+      }
+      
+      isRunning = false;
+      setImmediate(() => mainLoop());
+      return;
+    }
+    
     // Open auction house
     const window = await openAuctionHouse();
     
-    // Find cheap map
+    // Find cheap map (scan once)
+    console.log(`[AH] Scanning for cheap maps under $${CONFIG.maxBuyPrice}...`);
     let cheapMap = findCheapMap(window);
     
     if (!cheapMap) {
