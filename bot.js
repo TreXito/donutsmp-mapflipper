@@ -230,7 +230,7 @@ function countMapsInInventory() {
   for (let slot = 0; slot < inventory.slots.length; slot++) {
     const item = inventory.slots[slot];
     // Check for filled_map specifically to avoid matching other items
-    if (item && item.name && item.name === 'filled_map') {
+    if (item?.name === 'filled_map') {
       totalMaps += item.count || 1;
     }
   }
@@ -1153,8 +1153,8 @@ async function mainLoop() {
       const timeSinceLastMaintenance = currentTime - lastMaintenanceTime;
       
       // Check if we've reached the cycle interval and haven't run maintenance for this interval yet
-      const shouldRunCycleMaintenance = buyCycleCount > 0 && 
-                                        buyCycleCount % MAINTENANCE_CYCLE_INTERVAL === 0 && 
+      // Note: When buyCycleCount is 0, the modulo is 0 but lastMaintenanceCycle is also 0, so this won't trigger
+      const shouldRunCycleMaintenance = buyCycleCount % MAINTENANCE_CYCLE_INTERVAL === 0 && 
                                         buyCycleCount !== lastMaintenanceCycle;
       
       // Check if enough time has passed since last maintenance
