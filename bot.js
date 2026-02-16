@@ -95,6 +95,7 @@ const CONFIG = {
   delayAfterJoin: fileConfig.delayAfterJoin || parseInt(process.env.DELAY_AFTER_JOIN) || 5000,
   windowTimeout: fileConfig.windowTimeout || parseInt(process.env.WINDOW_TIMEOUT) || 15000,
   debugEvents: fileConfig.debugEvents || process.env.DEBUG_EVENTS === 'true' || false,
+  mode: fileConfig.mode || process.env.BOT_MODE || 'normal', // 'normal' or 'sell-only'
   webhook: webhookConfig
 };
 
@@ -135,11 +136,18 @@ const WINDOW_CLOSE_TIMEOUT = 3000; // Timeout waiting for window to close (ms)
 const WINDOW_CLEANUP_DELAY = 300; // Delay after closing window for cleanup (ms)
 const REFRESH_BUTTON_SLOT = 49; // Slot containing the refresh button (anvil icon) in AH window
 const MAX_LISTING_ITERATIONS = 50; // Maximum iterations in listMaps to prevent infinite loops
+const MAX_LISTING_RETRIES = 3; // Maximum retries per map when listing fails
+const MAINTENANCE_CYCLE_INTERVAL = 10; // Run sell-all maintenance every N buy cycles
+const MAINTENANCE_TIME_INTERVAL = 180000; // Run sell-all maintenance every 3 minutes (ms)
+const UNSTACK_DELAY = 200; // Delay between unstack operations (ms)
 
 let bot;
 let isAfkDetected = false;
 let isRunning = false;
 let lastStateId = 0; // Track stateId for window_click packets
+let buyCycleCount = 0; // Track number of buy cycles for periodic maintenance
+let lastMaintenanceTime = 0; // Track last maintenance run time
+let lastMaintenanceCycle = 0; // Track last cycle when maintenance ran
 
 // Small caps to ASCII mapping for AFK detection
 const SMALL_CAPS_MAP = {
@@ -207,6 +215,27 @@ function parsePrice(loreString) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Count the number of filled_map items currently in inventory.
+ * @returns {number} Total count of all map items (including stacks)
+ */
+function countMapsInInventory() {
+  if (!bot || !bot.inventory) return 0;
+  
+  let totalMaps = 0;
+  const inventory = bot.inventory;
+  
+  for (let slot = 0; slot < inventory.slots.length; slot++) {
+    const item = inventory.slots[slot];
+    // Check for filled_map specifically to avoid matching other items
+    if (item?.name === 'filled_map') {
+      totalMaps += item.count || 1;
+    }
+  }
+  
+  return totalMaps;
 }
 
 /**
@@ -610,7 +639,8 @@ async function unstackMaps() {
   const stackedMaps = [];
   
   for (const item of items) {
-    if (item.name && item.name.includes('map') && item.count > 1) {
+    // Check for filled_map specifically to avoid matching other items
+    if (item.name && item.name === 'filled_map' && item.count > 1) {
       const slotIndex = inventory.slots.indexOf(item);
       stackedMaps.push({ item, slotIndex });
     }
@@ -629,6 +659,276 @@ async function unstackMaps() {
   // Note: Maps from the auction house typically come as single items
   // If stacked, they'll be split when moved to hotbar for listing
   console.log('[INVENTORY] Maps will be split during hotbar filling for listing');
+}
+
+/**
+ * Comprehensive sell-all routine that handles accumulated maps.
+ * This function:
+ * 1. Scans entire inventory for all filled_map items
+ * 2. Unstacks any stacked maps into singles
+ * 3. Lists each single map with verification
+ * 4. Logs results (X maps listed, Y failed)
+ */
+async function sellAllMaps() {
+  console.log('[SELL-ALL] Starting comprehensive map cleanup...');
+  
+  const initialMapCount = countMapsInInventory();
+  console.log(`[SELL-ALL] Initial inventory: ${initialMapCount} map(s)`);
+  
+  if (initialMapCount === 0) {
+    console.log('[SELL-ALL] No maps to sell, skipping');
+    return { listed: 0, failed: 0 };
+  }
+  
+  let listedCount = 0;
+  let failedCount = 0;
+  
+  // Step 1: Unstack all stacked maps into singles
+  console.log('[SELL-ALL] Step 1: Unstacking all map stacks...');
+  const inventory = bot.inventory;
+  
+  // Find all stacked maps
+  const stackedMaps = [];
+  for (let slot = 0; slot < inventory.slots.length; slot++) {
+    const item = inventory.slots[slot];
+    // Check for filled_map specifically to avoid matching other items
+    if (item && item.name && item.name === 'filled_map' && item.count > 1) {
+      stackedMaps.push({ slot, count: item.count });
+    }
+  }
+  
+  if (stackedMaps.length > 0) {
+    console.log(`[SELL-ALL] Found ${stackedMaps.length} stacked map slot(s) to unstack`);
+    
+    for (const { slot: stackSlot, count } of stackedMaps) {
+      console.log(`[SELL-ALL] Unstacking ${count} maps from slot ${stackSlot}...`);
+      
+      // Unstack by right-clicking to pick up 1, then left-clicking to place
+      while (inventory.slots[stackSlot] && inventory.slots[stackSlot].count > 1) {
+        // Find an empty slot
+        let emptySlot = -1;
+        for (let i = 0; i < inventory.slots.length; i++) {
+          if (!inventory.slots[i]) {
+            emptySlot = i;
+            break;
+          }
+        }
+        
+        if (emptySlot === -1) {
+          console.log('[SELL-ALL] Warning: No empty slots to unstack, inventory full');
+          break;
+        }
+        
+        try {
+          // Right-click stack to pick up 1 map
+          // Window ID 0 is the player inventory (this is standard in Minecraft protocol)
+          clickWindowSlot(0, stackSlot, 1, 0);
+          await sleep(UNSTACK_DELAY);
+          
+          // Left-click empty slot to place it
+          clickWindowSlot(0, emptySlot, 0, 0);
+          await sleep(UNSTACK_DELAY);
+        } catch (error) {
+          console.error(`[SELL-ALL] Error unstacking: ${error.message}`);
+          break;
+        }
+      }
+    }
+    
+    console.log('[SELL-ALL] Unstacking complete');
+  } else {
+    console.log('[SELL-ALL] No stacked maps found, all maps are singles');
+  }
+  
+  // Step 2: List all single maps from inventory
+  console.log('[SELL-ALL] Step 2: Listing all maps...');
+  
+  let iteration = 0;
+  const maxIterations = 100; // Safety limit
+  
+  while (iteration < maxIterations) {
+    iteration++;
+    
+    // Find next map to list
+    let mapSlot = -1;
+    for (let slot = 0; slot < inventory.slots.length; slot++) {
+      const item = inventory.slots[slot];
+      // Check for filled_map specifically to avoid matching other items
+      if (item && item.name && item.name === 'filled_map') {
+        mapSlot = slot;
+        break;
+      }
+    }
+    
+    if (mapSlot === -1) {
+      console.log('[SELL-ALL] No more maps in inventory');
+      break;
+    }
+    
+    // Move map to hotbar slot 0 if not already there
+    const hotbarSlot = HOTBAR_START_SLOT; // Use slot 36 (hotbar 0)
+    if (mapSlot !== hotbarSlot) {
+      try {
+        console.log(`[SELL-ALL] Moving map from slot ${mapSlot} to hotbar...`);
+        await bot.moveSlotItem(mapSlot, hotbarSlot);
+        await sleep(200);
+      } catch (error) {
+        console.error(`[SELL-ALL] Error moving map: ${error.message}`);
+        failedCount++;
+        continue;
+      }
+    }
+    
+    // List the map with verification and retry
+    const listResult = await listSingleMapWithVerification(0); // Hotbar slot 0
+    
+    if (listResult) {
+      listedCount++;
+    } else {
+      failedCount++;
+    }
+  }
+  
+  if (iteration >= maxIterations) {
+    console.log('[SELL-ALL] Warning: Reached maximum iterations, may have maps remaining');
+  }
+  
+  const finalMapCount = countMapsInInventory();
+  console.log(`[SELL-ALL] Cleanup complete: ${listedCount} listed, ${failedCount} failed`);
+  console.log(`[SELL-ALL] Final inventory: ${finalMapCount} map(s) remaining`);
+  
+  // Send webhook notification
+  await sendWebhook('listing', {
+    message: `🧹 Sell-all cleanup completed`,
+    color: 3447003,
+    fields: [
+      { name: 'Listed', value: listedCount.toString(), inline: true },
+      { name: 'Failed', value: failedCount.toString(), inline: true },
+      { name: 'Remaining', value: finalMapCount.toString(), inline: true }
+    ]
+  });
+  
+  return { listed: listedCount, failed: failedCount };
+}
+
+/**
+ * List a single map from a hotbar slot with verification and retry logic.
+ * @param {number} hotbarSlotIndex - The hotbar slot index (0-8)
+ * @returns {boolean} True if successfully listed, false otherwise
+ */
+async function listSingleMapWithVerification(hotbarSlotIndex) {
+  const hotbarSlot = HOTBAR_START_SLOT + hotbarSlotIndex;
+  
+  for (let attempt = 1; attempt <= MAX_LISTING_RETRIES; attempt++) {
+    console.log(`[LISTING] Attempt ${attempt}/${MAX_LISTING_RETRIES} to list map from hotbar slot ${hotbarSlotIndex}...`);
+    
+    // Count maps before listing
+    const mapsBefore = countMapsInInventory();
+    
+    // Verify we still have a map in the hotbar slot
+    const inventory = bot.inventory;
+    const item = inventory.slots[hotbarSlot];
+    
+    // Check for filled_map specifically to avoid matching other items
+    if (!item || !item.name || item.name !== 'filled_map') {
+      console.log(`[LISTING] No map in hotbar slot ${hotbarSlotIndex}, skipping`);
+      return false;
+    }
+    
+    try {
+      // Hold the map in hotbar
+      bot.setQuickBarSlot(hotbarSlotIndex);
+      await sleep(300);
+      
+      // Send /ah list command
+      bot.chat(`/ah list ${CONFIG.sellPrice}`);
+      
+      // Wait for confirmation window to open
+      const confirmWindow = await new Promise((resolve, reject) => {
+        let timeout;
+        
+        const windowHandler = (window) => {
+          clearTimeout(timeout);
+          resolve(window);
+        };
+        
+        timeout = setTimeout(() => {
+          bot.off('windowOpen', windowHandler);
+          reject(new Error('Timeout waiting for listing confirmation window'));
+        }, CONFIG.windowTimeout);
+        
+        bot.once('windowOpen', windowHandler);
+      });
+      
+      console.log(`[LISTING] Confirmation window opened (window ID: ${confirmWindow.id})`);
+      
+      // Wait for GUI to fully render before clicking
+      await sleep(CLICK_CONFIRM_DELAY);
+      
+      // Click the confirm button at slot 15
+      console.log('[LISTING] Clicking confirm button at slot 15...');
+      clickWindowSlot(confirmWindow.id, 15, 0, 0);
+      
+      // Wait for window to close
+      await new Promise((resolve) => {
+        let closeTimeout;
+        
+        const closeHandler = () => {
+          console.log('[LISTING] Listing confirmed, window closed');
+          resolve();
+        };
+        
+        closeTimeout = setTimeout(() => {
+          bot.off('windowClose', closeHandler);
+          console.log('[LISTING] Window did not close in time, continuing...');
+          resolve();
+        }, WINDOW_CLOSE_TIMEOUT);
+        
+        bot.once('windowClose', () => {
+          clearTimeout(closeTimeout);
+          closeHandler();
+        });
+      });
+      
+      // Wait a moment for inventory to update
+      await sleep(500);
+      
+      // Verify listing worked by checking map count
+      const mapsAfter = countMapsInInventory();
+      
+      if (mapsAfter < mapsBefore) {
+        console.log(`[LISTING] ✓ Listing verified: ${mapsBefore} → ${mapsAfter} maps`);
+        return true;
+      } else {
+        console.log(`[LISTING] ✗ Listing FAILED: Map count unchanged (${mapsBefore} → ${mapsAfter})`);
+        
+        if (attempt < MAX_LISTING_RETRIES) {
+          console.log(`[LISTING] Retrying... (attempt ${attempt + 1}/${MAX_LISTING_RETRIES})`);
+          await sleep(1000); // Wait before retry
+        }
+      }
+      
+    } catch (error) {
+      console.error(`[LISTING] Error during listing attempt ${attempt}: ${error.message}`);
+      
+      // Close any open window to prevent protocol conflicts
+      if (bot.currentWindow) {
+        try {
+          bot.closeWindow(bot.currentWindow);
+          await sleep(WINDOW_CLEANUP_DELAY);
+        } catch (e) {
+          // Ignore close errors
+        }
+      }
+      
+      if (attempt < MAX_LISTING_RETRIES) {
+        await sleep(1000); // Wait before retry
+      }
+    }
+  }
+  
+  console.log(`[LISTING] Failed to list map after ${MAX_LISTING_RETRIES} attempts`);
+  return false;
 }
 
 async function listMaps() {
@@ -651,7 +951,8 @@ async function listMaps() {
       // Skip hotbar slots (36-44) - we'll fill those
       if (slot >= HOTBAR_START_SLOT && slot <= HOTBAR_END_SLOT) continue;
       
-      if (item && item.name && item.name.includes('map')) {
+      // Check for filled_map specifically to avoid matching other items
+      if (item && item.name && item.name === 'filled_map') {
         mapsToMove.push({ item, slot });
       }
     }
@@ -694,82 +995,19 @@ async function listMaps() {
       const hotbarSlot = HOTBAR_START_SLOT + hotbarSlotIndex;
       const item = inventory.slots[hotbarSlot];
       
-      if (!item || !item.name || !item.name.includes('map')) {
+      // Check for filled_map specifically to avoid matching other items
+      if (!item || !item.name || item.name !== 'filled_map') {
         console.log(`[LISTING] No map in hotbar slot ${hotbarSlotIndex}, skipping...`);
         continue;
       }
       
-      console.log(`[LISTING] Listing map from hotbar slot ${hotbarSlotIndex}...`);
+      // Use the new verification function to list with retry
+      const listResult = await listSingleMapWithVerification(hotbarSlotIndex);
       
-      // Hold the map in hotbar
-      bot.setQuickBarSlot(hotbarSlotIndex);
-      await sleep(200);
-      
-      // Send /ah list command
-      bot.chat(`/ah list ${CONFIG.sellPrice}`);
-      
-      // Wait for confirmation window to open
-      try {
-        const confirmWindow = await new Promise((resolve, reject) => {
-          let timeout;
-          
-          const windowHandler = (window) => {
-            clearTimeout(timeout);
-            resolve(window);
-          };
-          
-          timeout = setTimeout(() => {
-            bot.off('windowOpen', windowHandler);
-            reject(new Error('Timeout waiting for listing confirmation window'));
-          }, CONFIG.windowTimeout);
-          
-          bot.once('windowOpen', windowHandler);
-        });
-        
-        console.log(`[LISTING] Confirmation window opened (window ID: ${confirmWindow.id})`);
-        
-        // Wait for GUI to fully render before clicking
-        await sleep(CLICK_CONFIRM_DELAY);
-        
-        // Click the confirm button at slot 15
-        console.log('[LISTING] Clicking confirm button at slot 15...');
-        clickWindowSlot(confirmWindow.id, 15, 0, 0);
-        
-        // Wait for window to close
-        await new Promise((resolve) => {
-          let closeTimeout;
-          
-          const closeHandler = () => {
-            console.log('[LISTING] Listing confirmed, window closed');
-            resolve();
-          };
-          
-          closeTimeout = setTimeout(() => {
-            bot.off('windowClose', closeHandler);
-            console.log('[LISTING] Window did not close in time, continuing...');
-            resolve();
-          }, WINDOW_CLOSE_TIMEOUT);
-          
-          bot.once('windowClose', () => {
-            clearTimeout(closeTimeout);
-            closeHandler();
-          });
-        });
-        
+      if (listResult) {
         totalListedCount++;
-        
-      } catch (error) {
-        console.error(`[LISTING] Error listing map from hotbar slot ${hotbarSlotIndex}: ${error.message}`);
-        // Close any open window to prevent protocol conflicts
-        if (bot.currentWindow) {
-          try {
-            bot.closeWindow(bot.currentWindow);
-            await sleep(WINDOW_CLEANUP_DELAY);
-          } catch (e) {
-            // Ignore close errors
-          }
-        }
-        await sleep(500);
+      } else {
+        console.log(`[LISTING] Failed to list map from hotbar slot ${hotbarSlotIndex}`);
       }
     }
     
@@ -886,6 +1124,51 @@ async function mainLoop() {
       
       // List the maps
       await listMaps();
+      
+      // Increment buy cycle count
+      buyCycleCount++;
+      
+      // Check inventory after listing - if too many maps remain, something is wrong
+      const remainingMaps = countMapsInInventory();
+      console.log(`[INVENTORY] After listing: ${remainingMaps} map(s) remaining in inventory`);
+      
+      if (remainingMaps > WARN_MAP_COUNT_THRESHOLD) {
+        console.log(`[WARNING] More than ${WARN_MAP_COUNT_THRESHOLD} maps in inventory after listing!`);
+        console.log('[WARNING] Pausing buying and running sell-all cleanup...');
+        
+        await sendWebhook('error', {
+          message: `⚠️ Too many maps in inventory (${remainingMaps})`,
+          color: 15158332,
+          fields: [
+            { name: 'Action', value: 'Running sell-all cleanup', inline: true }
+          ]
+        });
+        
+        // Run sell-all to clean up
+        await sellAllMaps();
+      }
+      
+      // Periodic maintenance: Run sell-all every N cycles or every M minutes
+      const currentTime = Date.now();
+      const timeSinceLastMaintenance = currentTime - lastMaintenanceTime;
+      
+      // Check if we've reached the cycle interval and haven't run maintenance for this interval yet
+      // Note: When buyCycleCount is 0, the modulo is 0 but lastMaintenanceCycle is also 0, so this won't trigger
+      const shouldRunCycleMaintenance = buyCycleCount % MAINTENANCE_CYCLE_INTERVAL === 0 && 
+                                        buyCycleCount !== lastMaintenanceCycle;
+      
+      // Check if enough time has passed since last maintenance
+      const shouldRunTimeMaintenance = lastMaintenanceTime > 0 && 
+                                       timeSinceLastMaintenance >= MAINTENANCE_TIME_INTERVAL;
+      
+      if (shouldRunCycleMaintenance || shouldRunTimeMaintenance) {
+        console.log('[MAINTENANCE] Running periodic sell-all cleanup...');
+        console.log(`[MAINTENANCE] Cycles since startup: ${buyCycleCount}, Time since last maintenance: ${Math.round(timeSinceLastMaintenance / 1000)}s`);
+        
+        await sellAllMaps();
+        lastMaintenanceTime = currentTime;
+        lastMaintenanceCycle = buyCycleCount;
+      }
       
       // No delay after successful purchase - go immediately to next cycle
     } else {
@@ -1007,12 +1290,40 @@ function createBot() {
       color: 3066993,
       fields: [
         { name: 'Server', value: CONFIG.host, inline: true },
-        { name: 'Username', value: bot.username, inline: true }
+        { name: 'Username', value: bot.username, inline: true },
+        { name: 'Mode', value: CONFIG.mode, inline: true }
       ]
     });
     
     await sleep(CONFIG.delayAfterJoin);
     
+    // Run startup cleanup to clear any leftover maps from previous sessions
+    console.log('[STARTUP] Running startup cleanup to clear leftover maps...');
+    const startupResult = await sellAllMaps();
+    console.log(`[STARTUP] Cleanup complete: ${startupResult.listed} listed, ${startupResult.failed} failed`);
+    
+    // Initialize maintenance timer
+    lastMaintenanceTime = Date.now();
+    
+    // Check if in sell-only mode
+    if (CONFIG.mode === 'sell-only') {
+      console.log('[SELL-ONLY] Sell-only mode complete. Exiting...');
+      
+      await sendWebhook('startup', {
+        message: `✅ Sell-only cleanup completed`,
+        color: 3066993,
+        fields: [
+          { name: 'Listed', value: startupResult.listed.toString(), inline: true },
+          { name: 'Failed', value: startupResult.failed.toString(), inline: true }
+        ]
+      });
+      
+      // Disconnect and exit
+      bot.quit('Sell-only mode completed');
+      process.exit(0);
+    }
+    
+    // Normal mode: start main loop
     if (!isRunning && !isAfkDetected) {
       console.log('[BOT] Starting main loop');
       mainLoop();

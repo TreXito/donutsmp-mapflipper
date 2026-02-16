@@ -11,6 +11,7 @@
   "delayAfterJoin": 5000,
   "windowTimeout": 15000,
   "debugEvents": false,
+  "mode": "normal",
   "webhook": {
     "enabled": false,
     "url": "",
