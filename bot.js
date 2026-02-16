@@ -52,6 +52,36 @@ if (fs.existsSync(configPath)) {
   console.log('[CONFIG] No config.json found, using environment variables and defaults');
 }
 
+// Default webhook configuration
+const defaultWebhookConfig = {
+  enabled: false,
+  url: '',
+  displayName: 'DonutSMP Map Flipper',
+  events: {
+    purchase: true,
+    listing: true,
+    sale: true,
+    afk: true,
+    error: true,
+    startup: true
+  }
+};
+
+// Merge webhook config with defaults
+const webhookConfig = fileConfig.webhook ? {
+  enabled: fileConfig.webhook.enabled ?? defaultWebhookConfig.enabled,
+  url: fileConfig.webhook.url ?? defaultWebhookConfig.url,
+  displayName: fileConfig.webhook.displayName ?? defaultWebhookConfig.displayName,
+  events: {
+    purchase: fileConfig.webhook.events?.purchase ?? defaultWebhookConfig.events.purchase,
+    listing: fileConfig.webhook.events?.listing ?? defaultWebhookConfig.events.listing,
+    sale: fileConfig.webhook.events?.sale ?? defaultWebhookConfig.events.sale,
+    afk: fileConfig.webhook.events?.afk ?? defaultWebhookConfig.events.afk,
+    error: fileConfig.webhook.events?.error ?? defaultWebhookConfig.events.error,
+    startup: fileConfig.webhook.events?.startup ?? defaultWebhookConfig.events.startup
+  }
+} : defaultWebhookConfig;
+
 const CONFIG = {
   host: fileConfig.host || 'donutsmp.net',
   port: fileConfig.port || 25565,
@@ -65,20 +95,32 @@ const CONFIG = {
   delayAfterJoin: fileConfig.delayAfterJoin || parseInt(process.env.DELAY_AFTER_JOIN) || 5000,
   windowTimeout: fileConfig.windowTimeout || parseInt(process.env.WINDOW_TIMEOUT) || 15000,
   debugEvents: fileConfig.debugEvents || process.env.DEBUG_EVENTS === 'true' || false,
-  webhook: fileConfig.webhook || {
-    enabled: false,
-    url: '',
-    displayName: 'DonutSMP Map Flipper',
-    events: {
-      purchase: true,
-      listing: true,
-      sale: true,
-      afk: true,
-      error: true,
-      startup: true
-    }
-  }
+  webhook: webhookConfig
 };
+
+// Log webhook configuration status
+if (CONFIG.webhook.enabled) {
+  console.log('[CONFIG] Webhook notifications: ENABLED');
+  
+  // Display webhook URL (truncate if too long)
+  let urlDisplay;
+  if (!CONFIG.webhook.url) {
+    urlDisplay = 'NOT SET';
+  } else if (CONFIG.webhook.url.length > 50) {
+    urlDisplay = CONFIG.webhook.url.substring(0, 50) + '...';
+  } else {
+    urlDisplay = CONFIG.webhook.url;
+  }
+  console.log(`[CONFIG] Webhook URL: ${urlDisplay}`);
+  
+  const enabledEvents = Object.entries(CONFIG.webhook.events)
+    .filter(([, enabled]) => enabled)
+    .map(([name]) => name)
+    .join(', ');
+  console.log(`[CONFIG] Webhook events: ${enabledEvents}`);
+} else {
+  console.log('[CONFIG] Webhook notifications: DISABLED');
+}
 
 // Constants
 const HOTBAR_START_SLOT = 36;

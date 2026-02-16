@@ -160,7 +160,15 @@ npm install
 
 3. Restart the bot: `npm start`
 
+4. **Verify it's working** - Check logs on startup:
+   ```
+   [CONFIG] Webhook notifications: ENABLED
+   [CONFIG] Webhook URL: https://discord.com/api/webhooks/...
+   ```
+
 You'll now get Discord notifications for all bot events!
+
+**Note**: Only `enabled` and `url` are required. Other fields use smart defaults if omitted.
 
 ---
 

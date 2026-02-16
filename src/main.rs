@@ -44,7 +44,37 @@ async fn main() -> Result<()> {
     // Load configuration
     let config = Config::load()?;
     println!("[CONFIG] Loaded configuration");
-    println!("[STARTUP] Configuration: {:?}", config);
+    
+    // Log webhook configuration status
+    if config.webhook.enabled {
+        println!("[CONFIG] Webhook notifications: ENABLED");
+        if !config.webhook.url.is_empty() {
+            let url_display = if config.webhook.url.len() > 50 {
+                format!("{}...", &config.webhook.url[..50])
+            } else {
+                config.webhook.url.clone()
+            };
+            println!("[CONFIG] Webhook URL: {}", url_display);
+        } else {
+            println!("[CONFIG] Webhook URL: NOT SET - webhooks will not be sent!");
+        }
+        
+        // Collect enabled events
+        let events = [
+            ("purchase", config.webhook.events.purchase),
+            ("listing", config.webhook.events.listing),
+            ("sale", config.webhook.events.sale),
+            ("afk", config.webhook.events.afk),
+            ("error", config.webhook.events.error),
+            ("startup", config.webhook.events.startup),
+        ];
+        let enabled_events: Vec<&str> = events.iter()
+            .filter_map(|(name, enabled)| enabled.then_some(*name))
+            .collect();
+        println!("[CONFIG] Webhook events: {}", enabled_events.join(", "));
+    } else {
+        println!("[CONFIG] Webhook notifications: DISABLED");
+    }
 
     let _state = BotState {
         is_running: Arc::new(Mutex::new(false)),
