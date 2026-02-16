@@ -211,6 +211,37 @@ To receive Discord notifications for bot events:
 - **error**: Notifies on errors and when bot is kicked
 - **startup**: Notifies when bot successfully connects to server
 
+### Webhook Troubleshooting
+
+If webhooks aren't working:
+
+1. **Check the logs on startup** - The bot will display webhook status:
+   ```
+   [CONFIG] Webhook notifications: ENABLED
+   [CONFIG] Webhook URL: https://discord.com/api/webhooks/...
+   [CONFIG] Webhook events: purchase, listing, sale, afk, error, startup
+   ```
+
+2. **Verify your webhook URL**:
+   - Must start with `https://discord.com/api/webhooks/`
+   - Copy the entire URL from Discord (it's long)
+   - Don't include any extra spaces or characters
+
+3. **Check event-specific logs**:
+   - Each webhook attempt logs: `[WEBHOOK] Successfully sent {event} webhook`
+   - Failures show: `[WEBHOOK] Failed to send webhook (status XXX): ...`
+
+4. **Minimal working configuration**:
+   ```json
+   {
+     "webhook": {
+       "enabled": true,
+       "url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_URL"
+     }
+   }
+   ```
+   All other fields (displayName, events) are optional and will use defaults.
+
 ## Authentication
 
 ### Microsoft Authentication (Default)
