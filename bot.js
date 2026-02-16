@@ -228,7 +228,8 @@ function countMapsInInventory() {
   
   for (let slot = 0; slot < inventory.slots.length; slot++) {
     const item = inventory.slots[slot];
-    if (item && item.name && item.name.includes('map')) {
+    // Check for filled_map specifically to avoid matching other items
+    if (item && item.name && item.name === 'filled_map') {
       totalMaps += item.count || 1;
     }
   }
@@ -637,7 +638,8 @@ async function unstackMaps() {
   const stackedMaps = [];
   
   for (const item of items) {
-    if (item.name && item.name.includes('map') && item.count > 1) {
+    // Check for filled_map specifically to avoid matching other items
+    if (item.name && item.name === 'filled_map' && item.count > 1) {
       const slotIndex = inventory.slots.indexOf(item);
       stackedMaps.push({ item, slotIndex });
     }
@@ -688,7 +690,8 @@ async function sellAllMaps() {
   const stackedMaps = [];
   for (let slot = 0; slot < inventory.slots.length; slot++) {
     const item = inventory.slots[slot];
-    if (item && item.name && item.name.includes('map') && item.count > 1) {
+    // Check for filled_map specifically to avoid matching other items
+    if (item && item.name && item.name === 'filled_map' && item.count > 1) {
       stackedMaps.push({ slot, count: item.count });
     }
   }
@@ -748,7 +751,8 @@ async function sellAllMaps() {
     let mapSlot = -1;
     for (let slot = 0; slot < inventory.slots.length; slot++) {
       const item = inventory.slots[slot];
-      if (item && item.name && item.name.includes('map')) {
+      // Check for filled_map specifically to avoid matching other items
+      if (item && item.name && item.name === 'filled_map') {
         mapSlot = slot;
         break;
       }
@@ -823,7 +827,8 @@ async function listSingleMapWithVerification(hotbarSlotIndex) {
     const inventory = bot.inventory;
     const item = inventory.slots[hotbarSlot];
     
-    if (!item || !item.name || !item.name.includes('map')) {
+    // Check for filled_map specifically to avoid matching other items
+    if (!item || !item.name || item.name !== 'filled_map') {
       console.log(`[LISTING] No map in hotbar slot ${hotbarSlotIndex}, skipping`);
       return false;
     }
@@ -944,7 +949,8 @@ async function listMaps() {
       // Skip hotbar slots (36-44) - we'll fill those
       if (slot >= HOTBAR_START_SLOT && slot <= HOTBAR_END_SLOT) continue;
       
-      if (item && item.name && item.name.includes('map')) {
+      // Check for filled_map specifically to avoid matching other items
+      if (item && item.name && item.name === 'filled_map') {
         mapsToMove.push({ item, slot });
       }
     }
@@ -987,7 +993,8 @@ async function listMaps() {
       const hotbarSlot = HOTBAR_START_SLOT + hotbarSlotIndex;
       const item = inventory.slots[hotbarSlot];
       
-      if (!item || !item.name || !item.name.includes('map')) {
+      // Check for filled_map specifically to avoid matching other items
+      if (!item || !item.name || item.name !== 'filled_map') {
         console.log(`[LISTING] No map in hotbar slot ${hotbarSlotIndex}, skipping...`);
         continue;
       }
@@ -1143,7 +1150,8 @@ async function mainLoop() {
       const currentTime = Date.now();
       const timeSinceLastMaintenance = currentTime - lastMaintenanceTime;
       
-      if (buyCycleCount % MAINTENANCE_CYCLE_INTERVAL === 0 || 
+      // Skip cycle 0 (startup already ran cleanup) and check for cycle interval or time interval
+      if ((buyCycleCount > 0 && buyCycleCount % MAINTENANCE_CYCLE_INTERVAL === 0) || 
           (lastMaintenanceTime > 0 && timeSinceLastMaintenance >= MAINTENANCE_TIME_INTERVAL)) {
         console.log('[MAINTENANCE] Running periodic sell-all cleanup...');
         console.log(`[MAINTENANCE] Cycles since startup: ${buyCycleCount}, Time since last maintenance: ${Math.round(timeSinceLastMaintenance / 1000)}s`);
