@@ -440,18 +440,66 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
         const HOTBAR_SLOT_0: usize = 36;
         if slot_idx != HOTBAR_SLOT_0 {
             println!("[LISTING] Moving stack from slot {} to hotbar slot 0...", slot_idx);
+            
+            // Log before first click
+            println!("[INVENTORY DEBUG] About to left-click slot {} (pickup stack)", slot_idx);
             let inv_handle = bot.get_inventory();
+            let window_id = inv_handle.id();
+            println!("[INVENTORY DEBUG] Window ID: {}", window_id);
             inv_handle.left_click(slot_idx);
             sleep(Duration::from_millis(200)).await;
             
+            // Log before second click
+            println!("[INVENTORY DEBUG] About to left-click slot {} (place stack)", HOTBAR_SLOT_0);
             let inv_handle2 = bot.get_inventory();
             inv_handle2.left_click(HOTBAR_SLOT_0);
             sleep(Duration::from_millis(200)).await;
+            
+            // Verify the move
+            let verify_handle = bot.get_inventory();
+            if let Some(menu) = verify_handle.menu() {
+                let slots = menu.slots();
+                if HOTBAR_SLOT_0 < slots.len() {
+                    match &slots[HOTBAR_SLOT_0] {
+                        ItemStack::Present(data) if is_map_item(&slots[HOTBAR_SLOT_0]) => {
+                            println!("[INVENTORY DEBUG] ✓ Verified: {} maps now in hotbar slot 0", data.count);
+                        }
+                        ItemStack::Empty => {
+                            println!("[INVENTORY DEBUG] ✗ WARNING: Hotbar slot 0 is empty after move!");
+                        }
+                        _ => {
+                            println!("[INVENTORY DEBUG] ✗ WARNING: Different item in hotbar slot 0!");
+                        }
+                    }
+                }
+            }
+        } else {
+            println!("[LISTING] Stack already in hotbar slot 0");
         }
         
         // Select hotbar slot 0 to hold the stack
+        println!("[LISTING] Selecting hotbar slot 0...");
         bot.set_selected_hotbar_slot(0);
         sleep(Duration::from_millis(300)).await;
+        
+        // Log what we're about to list
+        let pre_list_inv = bot.get_inventory();
+        if let Some(menu) = pre_list_inv.menu() {
+            let slots = menu.slots();
+            if HOTBAR_SLOT_0 < slots.len() {
+                match &slots[HOTBAR_SLOT_0] {
+                    ItemStack::Present(data) if is_map_item(&slots[HOTBAR_SLOT_0]) => {
+                        println!("[LISTING DEBUG] Holding {} maps in selected hotbar slot 0", data.count);
+                    }
+                    ItemStack::Empty => {
+                        println!("[LISTING DEBUG] ✗ ERROR: Hotbar slot 0 is EMPTY before command!");
+                    }
+                    ItemStack::Present(data) => {
+                        println!("[LISTING DEBUG] ✗ ERROR: Holding wrong item: {:?}", data.kind);
+                    }
+                }
+            }
+        }
         
         // Send /ah sell command with calculated price for the stack
         let command = format!("/ah sell {}", price_str);
@@ -461,13 +509,26 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
         
         // Wait for confirmation window
         let timeout_ticks = (config.window_timeout + 50 - 1) / 50;
+        println!("[LISTING] Waiting for confirmation window (timeout: {}ms)...", config.window_timeout);
         match bot.wait_for_container_open(Some(timeout_ticks as usize)).await {
             Some(confirm_container) => {
+                let container_id = confirm_container.id();
+                println!("[LISTING] ✓ Confirmation window opened (container ID: {})", container_id);
+                
+                // Log what's in the confirmation window
+                if let Some(menu) = confirm_container.menu() {
+                    let slots = menu.slots();
+                    println!("[LISTING DEBUG] Confirmation window has {} slots", slots.len());
+                    // The item to be listed should be visible in the confirmation window
+                    // Usually in a specific slot depending on server implementation
+                }
+                
                 // Wait before clicking confirm to avoid spam kick
                 sleep(Duration::from_millis(300)).await;
                 
                 // Click confirm button (slot 15)
                 println!("[LISTING] Clicking confirm button (slot 15)...");
+                println!("[INVENTORY DEBUG] Container {}: left-click slot 15 (confirm)", container_id);
                 confirm_container.left_click(15_usize);
                 
                 // Forget the handle to prevent early closure
