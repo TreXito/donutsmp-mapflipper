@@ -306,9 +306,9 @@ pub async fn unstack_maps(bot: &Client) -> Result<()> {
         let inv_handle = bot.get_inventory();
         let empty_slot = if let Some(menu) = inv_handle.menu() {
             let slots = menu.slots();
-            // Only check slots 9-44 (main inventory + hotbar)
-            (9..=44)
-                .find(|&idx| idx < slots.len() && slots[idx].is_empty())
+            // Only check slots 9-44 (main inventory + hotbar), but respect actual slot count
+            (9..slots.len().min(45))
+                .find(|&idx| slots[idx].is_empty())
         } else {
             None
         };
@@ -338,7 +338,7 @@ pub async fn unstack_maps(bot: &Client) -> Result<()> {
                             let new_count = data.count;
                             if new_count == count {
                                 println!("[INVENTORY] WARNING: Split operation failed - count didn't change (still {})", count);
-                                println!("[INVENTORY] Server rejected the click - will retry next iteration");
+                                println!("[INVENTORY] Server rejected the click - operation will be retried in next loop iteration");
                             } else if new_count > count {
                                 println!("[INVENTORY] WARNING: Unexpected behavior - count increased from {} to {}", count, new_count);
                             } else {
