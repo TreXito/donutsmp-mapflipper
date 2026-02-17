@@ -17,7 +17,9 @@ const INVENTORY_MOVE_DELAY: u64 = 200;
 const HOTBAR_SELECTION_DELAY: u64 = 300;
 
 /// Check if an ItemStack contains a map
-/// Uses debug string matching as item.kind doesn't expose direct enum comparison
+/// 
+/// Note: Uses debug string matching as Azalea's item.kind doesn't expose direct enum comparison.
+/// This is a known limitation that may require updates if the debug format changes in future versions.
 fn is_map_item(item: &ItemStack) -> bool {
     if let ItemStack::Present(data) = item {
         let item_name = format!("{:?}", data.kind);
@@ -447,11 +449,8 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                 std::mem::forget(confirm_container);
                 
                 // Wait for the window to close and server to update inventory
-                // This is critical - the server needs time to process the listing
-                sleep(Duration::from_millis(500)).await;
-                
-                // Wait additional time to ensure inventory state is updated
-                sleep(Duration::from_millis(500)).await;
+                // Server needs time to process the listing and update client inventory state
+                sleep(Duration::from_millis(1000)).await;
                 
                 // Verify map was consumed by checking inventory
                 let verify_inv = bot.get_inventory();
@@ -460,8 +459,10 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                     let slots = menu.slots();
                     if HOTBAR_SLOT_0 < slots.len() {
                         match &slots[HOTBAR_SLOT_0] {
-                            ItemStack::Present(_) => {
-                                if is_map_item(&slots[HOTBAR_SLOT_0]) {
+                            ItemStack::Present(data) => {
+                                // Check item kind directly from matched data
+                                let item_name = format!("{:?}", data.kind);
+                                if item_name.to_lowercase().contains("map") {
                                     println!("[LISTING] WARNING: Map still in slot {} after listing - listing may have failed!", HOTBAR_SLOT_0);
                                     listing_success = false;
                                 } else {
