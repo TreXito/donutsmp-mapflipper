@@ -127,10 +127,15 @@ async fn start_afk_farming(bot: Client, config: &Config) -> Result<()> {
             println!("[AFK] Clicking slot 49 to teleport to random AFK location...");
             afk_menu.left_click(49_usize);
             
-            // Keep the container handle alive without closing it
-            std::mem::forget(afk_menu);
+            // Step 5: Wait for the click to be processed
+            sleep(Duration::from_millis(300)).await;
             
-            // Step 5: Wait for teleportation to complete
+            // Step 6: Properly close the container by dropping the handle
+            // This ensures Azalea sends the close packet to the server
+            drop(afk_menu);
+            println!("[AFK] AFK menu closed");
+            
+            // Step 7: Wait for teleportation to complete
             sleep(Duration::from_millis(2000)).await;
             
             println!("[AFK] AFK farming setup completed successfully");
