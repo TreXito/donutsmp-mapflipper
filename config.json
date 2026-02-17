@@ -9,6 +9,7 @@
   "maxListingsPerCycle": 20,
   "delayBetweenCycles": 5000,
   "delayAfterJoin": 5000,
+  "delayBetweenListings": 1000,
   "windowTimeout": 15000,
   "debugEvents": false,
   "enableAfkFarming": true,
