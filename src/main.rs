@@ -1,6 +1,6 @@
 use azalea::prelude::*;
 use parking_lot::Mutex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -15,7 +15,7 @@ mod inventory;
 use config::Config;
 use price_parser::parse_price;
 use webhook::send_webhook;
-use inventory::{open_auction_house, find_cheap_maps, purchase_map, list_maps, get_map_slots, unstack_maps};
+use inventory::{open_auction_house, find_cheap_maps, purchase_map, list_maps, get_map_slots};
 
 #[derive(Clone, Component)]
 pub struct BotState {
@@ -281,10 +281,6 @@ async fn run_cycle(bot: Client, state: BotState) -> Result<bool> {
             if let Some(map) = find_cheap_maps(&menu, state.config.max_buy_price) {
                 println!("[AH] Found cheap map: ${} from {}", map.price, map.seller);
                 
-                // Track which inventory slots have maps BEFORE purchase
-                let maps_before = get_map_slots(&bot);
-                println!("[CYCLE] Inventory snapshot: {} map(s) before purchase", maps_before.len());
-                
                 // Step 3: Attempt purchase
                 match purchase_map(&bot, &map, &state.config).await {
                     Ok(true) => {
@@ -302,36 +298,20 @@ async fn run_cycle(bot: Client, state: BotState) -> Result<bool> {
                             ],
                         ).await;
                         
-                        // Step 4: Unstack any stacked maps, then list ALL maps in inventory
-                        // Get current inventory state
-                        let maps_after = get_map_slots(&bot);
-                        println!("[CYCLE] Inventory snapshot: {} map(s) after purchase", maps_after.len());
-                        
-                        // First, unstack any stacked maps
-                        if let Err(e) = unstack_maps(&bot).await {
-                            eprintln!("[INVENTORY] Error unstacking maps: {}", e);
-                        }
-                        
-                        // Get updated map slots after unstacking
+                        // Step 4: List ALL maps in inventory
+                        // The new list_maps function handles stacks naturally by listing them one at a time
+                        // This efficiently clears the entire inventory without needing a separate unstacking step
                         let all_maps = get_map_slots(&bot);
-                        println!("[CYCLE] After unstacking: {} map(s) total in inventory", all_maps.len());
                         
-                        // Find slots that have maps now but didn't before (newly purchased)
-                        // Use HashSet for O(n) complexity instead of O(n²)
-                        let maps_before_set: HashSet<usize> = maps_before.into_iter().collect();
-                        let new_map_slots: Vec<usize> = all_maps
-                            .iter()
-                            .filter(|slot| !maps_before_set.contains(slot))
-                            .copied()
-                            .collect();
-                        
-                        if !new_map_slots.is_empty() {
-                            println!("[CYCLE] Found {} new map(s) to list", new_map_slots.len());
-                            if let Err(e) = list_maps(&bot, &state.config, &new_map_slots).await {
+                        if !all_maps.is_empty() {
+                            println!("[CYCLE] Found {} map slot(s) in inventory (including stacks)", all_maps.len());
+                            println!("[CYCLE] Listing all maps to clear inventory...");
+                            
+                            if let Err(e) = list_maps(&bot, &state.config, &all_maps).await {
                                 eprintln!("[LISTING] Error listing maps: {}", e);
                             }
                         } else {
-                            println!("[CYCLE] No new maps detected - purchase may have failed");
+                            println!("[CYCLE] No maps in inventory - purchase may have failed");
                         }
                         
                         return Ok(true);
