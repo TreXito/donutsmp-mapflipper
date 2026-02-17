@@ -10,6 +10,9 @@ use crate::config::Config;
 // Minecraft server tick rate: 1 tick = 50 milliseconds
 const MS_PER_TICK: u64 = 50;
 
+// Delay between unstack operations
+const UNSTACK_DELAY: u64 = 100;
+
 pub struct MapSlot {
     pub slot: usize,
     pub price: u32,
@@ -225,6 +228,79 @@ pub async fn purchase_map(
             Err(anyhow!("Confirm screen did not open after clicking map slot"))
         }
     }
+}
+
+/// Unstack all stacked maps in inventory into individual slots
+///
+/// Minecraft maps can sometimes come in stacks (multiple maps in one slot).
+/// This function separates stacked maps into individual slots so they can be listed separately.
+/// 
+/// Reference: bot.js lines 721-777
+pub async fn unstack_maps(bot: &Client) -> Result<()> {
+    println!("[INVENTORY] Checking for stacked maps...");
+    
+    // Get inventory handle
+    let inventory_handle = bot.get_inventory();
+    
+    if let Some(menu) = inventory_handle.menu() {
+        let slots = menu.slots();
+        
+        // Find all stacked maps (maps with count > 1)
+        let mut stacked_slots = Vec::new();
+        for (idx, slot) in slots.iter().enumerate() {
+            if let ItemStack::Present(data) = slot {
+                let item_name = format!("{:?}", data.kind);
+                if item_name.to_lowercase().contains("map") && data.count > 1 {
+                    stacked_slots.push((idx, data.count));
+                }
+            }
+        }
+        
+        if stacked_slots.is_empty() {
+            println!("[INVENTORY] No stacked maps found, all maps are singles");
+            return Ok(());
+        }
+        
+        println!("[INVENTORY] Found {} stacked map slot(s) to unstack", stacked_slots.len());
+        
+        for (stack_slot, count) in stacked_slots {
+            println!("[INVENTORY] Unstacking {} maps from slot {}...", count, stack_slot);
+            
+            // Unstack by right-clicking to pick up 1, then left-clicking to place in empty slot
+            // We need to do this (count - 1) times to separate all maps
+            for _ in 0..(count - 1) {
+                // Find an empty slot
+                let slots = menu.slots();
+                let mut empty_slot = None;
+                for (idx, slot) in slots.iter().enumerate() {
+                    if slot.is_empty() {
+                        empty_slot = Some(idx);
+                        break;
+                    }
+                }
+                
+                match empty_slot {
+                    Some(empty_idx) => {
+                        // Right-click the stack to pick up 1 map
+                        inventory_handle.right_click(stack_slot);
+                        sleep(Duration::from_millis(UNSTACK_DELAY)).await;
+                        
+                        // Left-click the empty slot to place it
+                        inventory_handle.left_click(empty_idx);
+                        sleep(Duration::from_millis(UNSTACK_DELAY)).await;
+                    }
+                    None => {
+                        println!("[INVENTORY] Warning: No empty slots to unstack, inventory full");
+                        break;
+                    }
+                }
+            }
+        }
+        
+        println!("[INVENTORY] Unstacking complete");
+    }
+    
+    Ok(())
 }
 
 /// List maps from inventory on auction house
