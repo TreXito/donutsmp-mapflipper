@@ -410,6 +410,11 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
             // Step 3: Send /ah list command (not /ah sell)
             bot.chat(&format!("/ah list {}", config.sell_price));
             
+            // Step 3.5: Add delay after chat command to respect server cooldown
+            // The server has a 0.25 second cooldown between commands
+            // We add 500ms to be safe and avoid "You need to wait another 0.25 seconds" spam
+            sleep(Duration::from_millis(500)).await;
+            
             // Step 4: Wait for confirmation GUI to open
             println!("[LISTING] Waiting for confirmation GUI...");
             let timeout_ticks = (config.window_timeout + MS_PER_TICK - 1) / MS_PER_TICK;
@@ -417,6 +422,10 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
             match bot.wait_for_container_open(Some(timeout_ticks as usize)).await {
                 Some(confirm_container) => {
                     println!("[LISTING] Confirmation GUI opened (container ID: {})", confirm_container.id());
+                    
+                    // Step 4.5: Add small delay after GUI opens to ensure it's ready
+                    // This prevents clicking too fast and triggering rate limits
+                    sleep(Duration::from_millis(300)).await;
                     
                     // Step 5: Click slot 15 to confirm listing
                     println!("[LISTING] Clicking confirm button at slot 15...");

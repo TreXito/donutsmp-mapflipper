@@ -157,12 +157,26 @@ async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> 
         Event::Login => {
             println!("[BOT] Logged in to server");
             
+            // Check if this is a reconnection
+            let was_running = {
+                let is_running = state.is_running.lock();
+                *is_running
+            };
+            
+            if was_running {
+                println!("[BOT] Reconnected after disconnect - resuming operations");
+            }
+            
             // Send startup webhook
             if let Err(e) = send_webhook(
                 &state.config,
                 "startup",
-                "🤖 Bot connected and spawned",
-                0x2ecc71,
+                if was_running {
+                    "🔄 Bot reconnected and resuming operations"
+                } else {
+                    "🤖 Bot connected and spawned"
+                },
+                if was_running { 0xf39c12 } else { 0x2ecc71 },
                 vec![
                     ("Server".to_string(), state.config.host.clone(), true),
                     ("Username".to_string(), bot.username().to_string(), true),
@@ -182,14 +196,19 @@ async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> 
             println!("[BOT] Waiting {}ms before starting...", state.config.delay_after_join);
             sleep(Duration::from_millis(state.config.delay_after_join)).await;
             
-            // Start main loop
+            // Start or restart main loop
+            // For reconnections, we always restart the loop regardless of the flag
+            // because the previous loop task was terminated when we disconnected
             let mut is_running = state.is_running.lock();
-            if !*is_running {
-                *is_running = true;
-                drop(is_running);
+            *is_running = true;
+            drop(is_running);
+            
+            if was_running {
+                println!("[BOT] Restarting main loop after reconnection");
+            } else {
                 println!("[BOT] Starting main loop");
-                tokio::spawn(main_loop(bot.clone(), state.clone()));
             }
+            tokio::spawn(main_loop(bot.clone(), state.clone()));
         }
         Event::Chat(m) => {
             let message = m.message().to_string();
