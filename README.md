@@ -1,7 +1,6 @@
-# DonutSMP Map Flipper Bot
+# DSM-Client
 
-A Minecraft bot that automates buying cheap maps from the auction house on donutsmp.net and relisting them at a higher price.
-
+a TreXito Project
 ## 🚀 Quick Start
 
 **Want to get started immediately?** → [QUICKSTART.md](QUICKSTART.md)
