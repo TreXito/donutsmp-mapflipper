@@ -179,7 +179,7 @@ async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> 
             
             // Start main loop
             let mut is_running = state.is_running.lock();
-            if !*is_running && !*state.is_afk_detected.lock() {
+            if !*is_running {
                 *is_running = true;
                 drop(is_running);
                 println!("[BOT] Starting main loop");
@@ -190,10 +190,19 @@ async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> 
             let message = m.message().to_string();
             println!("[CHAT] {}", message);
             
-            // Check for AFK detection
+            // Check for AFK teleport notification
             let normalized = normalize_text(&message);
             if normalized.contains("teleported to") && normalized.contains("afk") {
-                handle_afk_detection(bot.clone(), state.clone()).await;
+                println!("[AFK] Detected AFK teleport - continuing operations in AFK zone");
+                
+                // Send webhook notification
+                let _ = send_webhook(
+                    &state.config,
+                    "afk",
+                    "🌙 Teleported to AFK zone - continuing to flip auctions",
+                    0x9b59b6,
+                    vec![],
+                ).await;
             }
             
             // Check for map sale
@@ -206,13 +215,6 @@ async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> 
 
 async fn main_loop(bot: Client, state: BotState) {
     loop {
-        // Check if we should stop
-        if *state.is_afk_detected.lock() {
-            println!("[LOOP] AFK detected, pausing main loop");
-            sleep(Duration::from_secs(1)).await;
-            continue;
-        }
-        
         match run_cycle(bot.clone(), state.clone()).await {
             Ok(success) => {
                 if success {
@@ -320,46 +322,6 @@ async fn run_cycle(bot: Client, state: BotState) -> Result<bool> {
     }
     
     Ok(false)
-}
-
-async fn handle_afk_detection(bot: Client, state: BotState) {
-    // Prevent multiple simultaneous AFK handling
-    {
-        let mut is_afk = state.is_afk_detected.lock();
-        if *is_afk {
-            println!("[AFK] Already handling AFK detection");
-            return;
-        }
-        *is_afk = true;
-    }
-    
-    println!("[AFK] Detected AFK teleport, returning to hub...");
-    
-    let _ = send_webhook(
-        &state.config,
-        "afk",
-        "AFK detected! Returning to hub...",
-        0xffff00,
-        vec![],
-    ).await;
-    
-    // Send /hub command
-    bot.chat("/hub");
-    sleep(Duration::from_secs(1)).await;
-    
-    // Wait for hub selection window - TODO: implement window handling
-    sleep(Duration::from_secs(3)).await;
-    
-    // Wait 10 seconds before resuming
-    println!("[AFK] Waiting 10 seconds before resuming...");
-    sleep(Duration::from_secs(10)).await;
-    
-    {
-        let mut is_afk = state.is_afk_detected.lock();
-        *is_afk = false;
-    }
-    
-    println!("[AFK] Resuming operations");
 }
 
 async fn check_for_sale(message: &str, config: &Config) {
