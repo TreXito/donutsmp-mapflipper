@@ -9,3 +9,4 @@ releases/
 # Added by cargo
 
 /target
+*.backup

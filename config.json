@@ -1,8 +1,8 @@
 {
   "host": "donutsmp.net",
   "port": 25565,
-  "username": "TestBot123",
-  "auth": "offline",
+  "username": "your-email@example.com",
+  "auth": "microsoft",
   "version": "1.21.11",
   "maxBuyPrice": 2500,
   "sellPrice": "9.9k",
