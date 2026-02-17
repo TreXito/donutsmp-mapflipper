@@ -235,88 +235,91 @@ pub async fn purchase_map(
 
 /// Unstack all stacked maps in inventory into individual slots
 ///
-/// NOTE: This function is currently UNUSED as we now handle stacks naturally during listing.
-/// Kept for potential future use or alternative unstacking strategies.
-///
 /// Minecraft maps can sometimes come in stacks (multiple maps in one slot).
 /// This function separates stacked maps into individual slots so they can be listed separately.
 /// 
-/// Reference: bot.js lines 721-777
-#[allow(dead_code)]
+/// IMPORTANT: Right-click picks up HALF the stack (rounded up), NOT one item.
+/// For example:
+/// - Stack of 10: right-click picks up 5, leaves 5
+/// - Stack of 9: right-click picks up 5, leaves 4
+/// - Stack of 2: right-click picks up 1, leaves 1
+/// 
+/// Strategy: Repeatedly right-click stacks and place them in empty slots until all maps are singles.
 pub async fn unstack_maps(bot: &Client) -> Result<()> {
     println!("[INVENTORY] Checking for stacked maps...");
     
-    // Get a fresh inventory handle to check current state
-    let inventory_handle = bot.get_inventory();
+    let max_iterations = 100; // Safety limit to prevent infinite loops
+    let mut iteration = 0;
     
-    if let Some(menu) = inventory_handle.menu() {
-        let slots = menu.slots();
-        
-        // Find all stacked maps (maps with count > 1)
-        let mut stacked_slots = Vec::new();
-        for (idx, slot) in slots.iter().enumerate() {
-            if let ItemStack::Present(data) = slot {
-                let item_name = format!("{:?}", data.kind);
-                if item_name.to_lowercase().contains("map") && data.count > 1 {
-                    stacked_slots.push((idx, data.count));
-                }
-            }
+    loop {
+        iteration += 1;
+        if iteration > max_iterations {
+            println!("[INVENTORY] Warning: Hit max iterations ({}), stopping unstacking", max_iterations);
+            break;
         }
         
-        if stacked_slots.is_empty() {
-            println!("[INVENTORY] No stacked maps found, all maps are singles");
-            return Ok(());
-        }
+        // Get a fresh inventory handle to check current state
+        let inventory_handle = bot.get_inventory();
         
-        println!("[INVENTORY] Found {} stacked map slot(s) to unstack", stacked_slots.len());
-        
-        for (stack_slot, count) in stacked_slots {
-            println!("[INVENTORY] Unstacking {} maps from slot {}...", count, stack_slot);
+        let stacked_slot = if let Some(menu) = inventory_handle.menu() {
+            let slots = menu.slots();
             
-            // Unstack by right-clicking to pick up 1, then left-clicking to place in empty slot
-            // We need to do this (count - 1) times to separate all maps
-            for _ in 0..(count - 1) {
-                // Get a fresh inventory handle for each click operation
-                // This ensures we use the current container ID which may change between operations
-                let inv_handle = bot.get_inventory();
-                
-                // Find an empty slot in the current inventory state
-                let empty_slot = if let Some(menu) = inv_handle.menu() {
-                    let slots = menu.slots();
-                    let mut found_slot = None;
-                    for (idx, slot) in slots.iter().enumerate() {
-                        if slot.is_empty() {
-                            found_slot = Some(idx);
-                            break;
-                        }
-                    }
-                    found_slot
-                } else {
-                    None
-                };
-                
-                match empty_slot {
-                    Some(empty_idx) => {
-                        // Right-click the stack to pick up 1 map
-                        inv_handle.right_click(stack_slot);
-                        sleep(Duration::from_millis(100)).await; // UNSTACK_DELAY
-                        
-                        // Get another fresh handle for the left-click to ensure correct container ID
-                        let inv_handle_placement = bot.get_inventory();
-                        
-                        // Left-click the empty slot to place it
-                        inv_handle_placement.left_click(empty_idx);
-                        sleep(Duration::from_millis(100)).await; // UNSTACK_DELAY
-                    }
-                    None => {
-                        println!("[INVENTORY] Warning: No empty slots to unstack, inventory full");
+            // Find the first stacked map (count > 1)
+            let mut found = None;
+            for (idx, slot) in slots.iter().enumerate() {
+                if let ItemStack::Present(data) = slot {
+                    let item_name = format!("{:?}", data.kind);
+                    if item_name.to_lowercase().contains("map") && data.count > 1 {
+                        found = Some((idx, data.count));
                         break;
                     }
                 }
             }
+            found
+        } else {
+            None
+        };
+        
+        // If no stacked maps found, we're done
+        if stacked_slot.is_none() {
+            println!("[INVENTORY] ✓ All maps are now singles (after {} iteration(s))", iteration - 1);
+            break;
         }
         
-        println!("[INVENTORY] Unstacking complete");
+        let (stack_slot, count) = stacked_slot.unwrap();
+        println!("[INVENTORY] Found stack of {} maps at slot {}, splitting...", count, stack_slot);
+        
+        // Find an empty slot
+        let inv_handle = bot.get_inventory();
+        let empty_slot = if let Some(menu) = inv_handle.menu() {
+            let slots = menu.slots();
+            slots.iter().enumerate()
+                .find(|(_, slot)| slot.is_empty())
+                .map(|(idx, _)| idx)
+        } else {
+            None
+        };
+        
+        match empty_slot {
+            Some(empty_idx) => {
+                // Right-click the stack to pick up HALF (rounded up)
+                // This splits the stack into two parts
+                println!("[INVENTORY] Right-clicking slot {} to pick up half...", stack_slot);
+                inv_handle.right_click(stack_slot);
+                sleep(Duration::from_millis(150)).await;
+                
+                // Get a fresh handle and left-click empty slot to place the half
+                let inv_handle2 = bot.get_inventory();
+                println!("[INVENTORY] Left-clicking empty slot {} to place...", empty_idx);
+                inv_handle2.left_click(empty_idx);
+                sleep(Duration::from_millis(150)).await;
+            }
+            None => {
+                println!("[INVENTORY] ERROR: No empty slots available to unstack!");
+                println!("[INVENTORY] Inventory is full - cannot continue unstacking");
+                return Err(anyhow!("Inventory full, cannot unstack maps"));
+            }
+        }
     }
     
     Ok(())
@@ -324,133 +327,126 @@ pub async fn unstack_maps(bot: &Client) -> Result<()> {
 
 /// List all maps from inventory on auction house
 ///
-/// This is a bot-friendly approach that lists ALL maps in inventory, handling stacks naturally.
-/// The bot moves maps to the hotbar slot 0, then lists them one at a time until all are listed.
-///
 /// Flow:
-/// 1. Find all slots with maps
-/// 2. For each map slot, move to hotbar slot 0 (if not already there)
-/// 3. List from hotbar slot 0 repeatedly until all maps are listed or limit is reached
+/// 1. First unstack all maps so each map is in its own slot
+/// 2. Find all single map slots
+/// 3. For each map slot, list it individually using the /ah list command
 ///
-/// Reference: bot.js lines 974-1064
+/// The correct sell loop according to the problem statement:
+/// - First: while slot.count > 1, unstack (right-click + left-click)
+/// - Then: for each single map, select hotbar, /ah sell, confirm
 pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -> Result<()> {
     if slots_to_list.is_empty() {
         println!("[LISTING] No maps to list");
         return Ok(());
     }
     
-    println!("[LISTING] Starting to list maps from {} slot(s)...", slots_to_list.len());
+    println!("[LISTING] Starting to list {} map slot(s)...", slots_to_list.len());
     
-    // The hotbar starts at slot 36 in Minecraft inventory
-    // Slot 36 is hotbar index 0 (the leftmost hotbar slot)
-    const HOTBAR_SLOT_0: usize = 36;
+    // Step 1: Unstack all maps first
+    println!("[LISTING] Step 1: Unstacking maps...");
+    if let Err(e) = unstack_maps(bot).await {
+        eprintln!("[LISTING] Error during unstacking: {}", e);
+        return Err(e);
+    }
     
-    let mut total_listed = 0;
-    let max_listings = config.max_listings_per_cycle as usize;
-    
-    // First, move all maps to consolidate them (simplifies listing)
-    // We'll move everything to hotbar and other inventory slots
-    let mut maps_to_list = Vec::new();
-    
-    // Get fresh inventory to see what we have
+    // Step 2: Get fresh inventory snapshot after unstacking
     let inv = bot.get_inventory();
-    if let Some(menu) = inv.menu() {
+    let single_maps: Vec<usize> = if let Some(menu) = inv.menu() {
         let slots = menu.slots();
-        for &slot_idx in slots_to_list {
-            if slot_idx < slots.len() {
-                if let ItemStack::Present(data) = &slots[slot_idx] {
+        slots.iter().enumerate()
+            .filter(|(_, slot)| {
+                if let ItemStack::Present(data) = slot {
                     let item_name = format!("{:?}", data.kind);
-                    if item_name.to_lowercase().contains("map") {
-                        // This slot has maps
-                        maps_to_list.push((slot_idx, data.count));
-                    }
-                }
-            }
-        }
-    }
-    
-    if maps_to_list.is_empty() {
-        println!("[LISTING] No maps found in specified slots");
-        return Ok(());
-    }
-    
-    println!("[LISTING] Found {} map slot(s) to process", maps_to_list.len());
-    
-    // Now list maps one by one
-    // Strategy: Keep checking hotbar slot 0 and list from there until empty,
-    // then move next slot's maps to hotbar slot 0
-    for (slot_idx, initial_count) in maps_to_list {
-        println!("[LISTING] Processing slot {} ({} map(s))...", slot_idx, initial_count);
-        
-        // Move this slot's maps to hotbar slot 0 (if not already there)
-        if slot_idx != HOTBAR_SLOT_0 {
-            let inv_handle = bot.get_inventory();
-            inv_handle.left_click(slot_idx);
-            sleep(Duration::from_millis(INVENTORY_MOVE_DELAY)).await;
-            
-            let inv_handle2 = bot.get_inventory();
-            inv_handle2.left_click(HOTBAR_SLOT_0);
-            sleep(Duration::from_millis(INVENTORY_MOVE_DELAY)).await;
-        }
-        
-        // Now list from hotbar slot 0 until it's empty or we hit limit
-        loop {
-            if total_listed >= max_listings {
-                println!("[LISTING] Reached listing limit of {} maps per cycle", max_listings);
-                return Ok(());
-            }
-            
-            // Check if hotbar slot 0 still has maps
-            let inv_check = bot.get_inventory();
-            let has_maps = if let Some(menu) = inv_check.menu() {
-                let slots = menu.slots();
-                if HOTBAR_SLOT_0 < slots.len() {
-                    if let ItemStack::Present(data) = &slots[HOTBAR_SLOT_0] {
-                        let item_name = format!("{:?}", data.kind);
-                        item_name.to_lowercase().contains("map")
-                    } else {
-                        false
-                    }
+                    item_name.to_lowercase().contains("map")
                 } else {
                     false
                 }
-            } else {
-                false
-            };
+            })
+            .map(|(idx, _)| idx)
+            .collect()
+    } else {
+        vec![]
+    };
+    
+    if single_maps.is_empty() {
+        println!("[LISTING] No maps found after unstacking");
+        return Ok(());
+    }
+    
+    println!("[LISTING] Step 2: Found {} single map(s) to list", single_maps.len());
+    
+    // Step 3: List each map one at a time
+    let max_listings = config.max_listings_per_cycle as usize;
+    let maps_to_list = single_maps.iter().take(max_listings).copied().collect::<Vec<_>>();
+    
+    println!("[LISTING] Step 3: Listing up to {} maps...", maps_to_list.len());
+    
+    for (idx, map_slot) in maps_to_list.iter().enumerate() {
+        println!("[LISTING] Listing map {}/{} from slot {}...", idx + 1, maps_to_list.len(), map_slot);
+        
+        // Move map to hotbar slot 0 if not already there
+        const HOTBAR_SLOT_0: usize = 36;
+        if *map_slot != HOTBAR_SLOT_0 {
+            let inv_handle = bot.get_inventory();
+            inv_handle.left_click(*map_slot);
+            sleep(Duration::from_millis(200)).await;
             
-            if !has_maps {
-                break; // No more maps in hotbar slot 0, move to next source slot
+            let inv_handle2 = bot.get_inventory();
+            inv_handle2.left_click(HOTBAR_SLOT_0);
+            sleep(Duration::from_millis(200)).await;
+        }
+        
+        // Select hotbar slot 0
+        bot.set_selected_hotbar_slot(0);
+        sleep(Duration::from_millis(300)).await;
+        
+        // Send /ah sell command (using sell_price from config, e.g., "9.9k")
+        let command = format!("/ah sell {}", config.sell_price);
+        println!("[LISTING] Sending command: {}", command);
+        bot.chat(&command);
+        sleep(Duration::from_millis(500)).await;
+        
+        // Wait for confirmation window
+        let timeout_ticks = (config.window_timeout + 50 - 1) / 50;
+        match bot.wait_for_container_open(Some(timeout_ticks as usize)).await {
+            Some(confirm_container) => {
+                // Wait before clicking confirm to avoid spam kick
+                sleep(Duration::from_millis(300)).await;
+                
+                // Click confirm button (slot 15)
+                println!("[LISTING] Clicking confirm button (slot 15)...");
+                confirm_container.left_click(15_usize);
+                
+                // Forget the handle to prevent early closure
+                std::mem::forget(confirm_container);
+                
+                println!("[LISTING] ✓ Map {} listed successfully", idx + 1);
+                
+                // Wait between listings to avoid command cooldown
+                sleep(Duration::from_millis(config.delay_between_listings)).await;
+                
+                // Verify map is gone by checking inventory
+                let verify_inv = bot.get_inventory();
+                if let Some(menu) = verify_inv.menu() {
+                    let slots = menu.slots();
+                    if HOTBAR_SLOT_0 < slots.len() {
+                        if let ItemStack::Present(_) = &slots[HOTBAR_SLOT_0] {
+                            println!("[LISTING] Warning: Map still in slot {} after listing!", HOTBAR_SLOT_0);
+                        } else {
+                            println!("[LISTING] ✓ Verified map removed from slot {}", HOTBAR_SLOT_0);
+                        }
+                    }
+                }
             }
-            
-            // List one map from hotbar slot 0
-            bot.set_selected_hotbar_slot(0);
-            sleep(Duration::from_millis(HOTBAR_SELECTION_DELAY)).await;
-            
-            bot.chat(&format!("/ah list {}", config.sell_price));
-            sleep(Duration::from_millis(500)).await;
-            
-            let timeout_ticks = (config.window_timeout + MS_PER_TICK - 1) / MS_PER_TICK;
-            
-            match bot.wait_for_container_open(Some(timeout_ticks as usize)).await {
-                Some(confirm_container) => {
-                    sleep(Duration::from_millis(300)).await;
-                    confirm_container.left_click(15_usize);
-                    std::mem::forget(confirm_container);
-                    
-                    total_listed += 1;
-                    println!("[LISTING] ✓ Map listed successfully ({}/{})", total_listed, max_listings);
-                    
-                    sleep(Duration::from_millis(config.delay_between_listings)).await;
-                }
-                None => {
-                    println!("[LISTING] ERROR: Confirmation GUI did not open");
-                    break; // Move to next slot on error
-                }
+            None => {
+                println!("[LISTING] ERROR: Confirmation window did not open for map at slot {}", map_slot);
+                // Continue to next map instead of failing entire operation
             }
         }
     }
     
-    println!("[LISTING] Finished listing {} map(s)", total_listed);
+    println!("[LISTING] Finished listing {} map(s)", maps_to_list.len());
     Ok(())
 }
 

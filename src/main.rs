@@ -22,6 +22,7 @@ pub struct BotState {
     pub is_running: Arc<Mutex<bool>>,
     pub is_afk_detected: Arc<Mutex<bool>>,
     pub config: Arc<Config>,
+    pub awaiting_shards_response: Arc<Mutex<bool>>,
 }
 
 impl Default for BotState {
@@ -30,6 +31,7 @@ impl Default for BotState {
             is_running: Arc::new(Mutex::new(false)),
             is_afk_detected: Arc::new(Mutex::new(false)),
             config: Arc::new(Config::from_env()),
+            awaiting_shards_response: Arc::new(Mutex::new(false)),
         }
     }
 }
@@ -52,6 +54,21 @@ async fn main() -> Result<()> {
                 config.webhook.url.clone()
             };
             println!("[CONFIG] Webhook URL: {}", url_display);
+            
+            // Test webhook on startup
+            println!("[WEBHOOK] Testing webhook connection...");
+            match send_webhook(
+                &config,
+                "startup",
+                "🧪 Webhook test - Bot is starting up",
+                0x3498db,
+                vec![
+                    ("Status".to_string(), "Testing webhook connectivity".to_string(), false),
+                ],
+            ).await {
+                Ok(_) => println!("[WEBHOOK] ✓ Webhook test successful"),
+                Err(e) => eprintln!("[WEBHOOK] ✗ Webhook test failed: {}", e),
+            }
         } else {
             println!("[CONFIG] Webhook URL: NOT SET - webhooks will not be sent!");
         }
@@ -77,6 +94,7 @@ async fn main() -> Result<()> {
         is_running: Arc::new(Mutex::new(false)),
         is_afk_detected: Arc::new(Mutex::new(false)),
         config: Arc::new(config.clone()),
+        awaiting_shards_response: Arc::new(Mutex::new(false)),
     };
 
     // Create account based on auth type
@@ -209,10 +227,40 @@ async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> 
                 println!("[BOT] Starting main loop");
             }
             tokio::spawn(main_loop(bot.clone(), state.clone()));
+            
+            // Start shards tracking task (runs every 30 minutes)
+            tokio::spawn(shards_tracking_loop(bot.clone(), state.clone()));
         }
         Event::Chat(m) => {
             let message = m.message().to_string();
             println!("[CHAT] {}", message);
+            
+            // Check if we're waiting for a shards response
+            let awaiting = {
+                let awaiting_lock = state.awaiting_shards_response.lock();
+                *awaiting_lock
+            };
+            
+            if awaiting {
+                // Check if this message contains "shard" (case insensitive)
+                let normalized = normalize_text(&message);
+                if normalized.contains("shard") {
+                    println!("[SHARDS] Captured shards response: {}", message);
+                    
+                    // Send to webhook
+                    let _ = send_webhook(
+                        &state.config,
+                        "shards",
+                        &format!("📊 Shards Update:\n{}", message),
+                        0xf1c40f,
+                        vec![],
+                    ).await;
+                    
+                    // Reset the flag
+                    let mut awaiting_lock = state.awaiting_shards_response.lock();
+                    *awaiting_lock = false;
+                }
+            }
             
             // Check for AFK teleport notification
             let normalized = normalize_text(&message);
@@ -235,6 +283,45 @@ async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> 
         _ => {}
     }
     Ok(())
+}
+
+async fn shards_tracking_loop(bot: Client, state: BotState) {
+    // Wait 30 seconds before first check (give bot time to fully initialize)
+    sleep(Duration::from_secs(30)).await;
+    
+    loop {
+        println!("[SHARDS] Sending /shards command...");
+        
+        // Set flag that we're waiting for a response
+        {
+            let mut awaiting = state.awaiting_shards_response.lock();
+            *awaiting = true;
+        }
+        
+        // Send /shards command
+        bot.chat("/shards");
+        
+        // Wait 10 seconds for response before timing out
+        // The chat handler will capture any message containing "shard"
+        sleep(Duration::from_secs(10)).await;
+        
+        // Check if we got a response
+        let got_response = {
+            let awaiting = state.awaiting_shards_response.lock();
+            !*awaiting  // If flag is false, we got a response
+        };
+        
+        if !got_response {
+            println!("[SHARDS] No shards response received within timeout");
+            // Reset flag anyway
+            let mut awaiting = state.awaiting_shards_response.lock();
+            *awaiting = false;
+        }
+        
+        // Wait 30 minutes before next check
+        println!("[SHARDS] Next shards check in 30 minutes");
+        sleep(Duration::from_secs(30 * 60)).await;
+    }
 }
 
 async fn main_loop(bot: Client, state: BotState) {
