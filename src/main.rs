@@ -251,7 +251,7 @@ async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> 
                     let _ = send_webhook(
                         &state.config,
                         "shards",
-                        &format!("📊 Shards Update:\n{}", message),
+                        &format!("📊 Shards Update: {}", message),
                         0xf1c40f,
                         vec![],
                     ).await;
@@ -284,6 +284,9 @@ async fn handle_event(bot: Client, event: Event, state: BotState) -> Result<()> 
     }
     Ok(())
 }
+
+// Shards tracking interval: 30 minutes in seconds
+const SHARDS_CHECK_INTERVAL_SECS: u64 = 30 * 60;
 
 async fn shards_tracking_loop(bot: Client, state: BotState) {
     // Wait 30 seconds before first check (give bot time to fully initialize)
@@ -320,7 +323,7 @@ async fn shards_tracking_loop(bot: Client, state: BotState) {
         
         // Wait 30 minutes before next check
         println!("[SHARDS] Next shards check in 30 minutes");
-        sleep(Duration::from_secs(30 * 60)).await;
+        sleep(Duration::from_secs(SHARDS_CHECK_INTERVAL_SECS)).await;
     }
 }
 

@@ -73,7 +73,9 @@ pub async fn send_webhook(
     });
     
     // Log the full request body before sending
-    println!("[WEBHOOK] Request body: {}", serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "Failed to serialize".to_string()));
+    let request_body = serde_json::to_string_pretty(&payload)
+        .unwrap_or_else(|_| "Failed to serialize".to_string());
+    println!("[WEBHOOK] Request body: {}", request_body);
     
     let client = reqwest::Client::new();
     let response = client
