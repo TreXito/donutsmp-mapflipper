@@ -29,6 +29,17 @@ pub fn strip_minecraft_colors(text: &str) -> String {
     re.replace_all(text, "").to_string()
 }
 
+/// Format a price value into a string like "9.9k" or "316.8k"
+pub fn format_price(price: u32) -> String {
+    if price >= 1000 {
+        let k_value = price as f64 / 1000.0;
+        // Round to 1 decimal place
+        format!("{:.1}k", k_value)
+    } else {
+        price.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -49,5 +60,14 @@ mod tests {
         assert_eq!(strip_minecraft_colors("§aHello §6World"), "Hello World");
         assert_eq!(strip_minecraft_colors("Normal text"), "Normal text");
         assert_eq!(strip_minecraft_colors("§k§l§m§n§oTest"), "Test");
+    }
+    
+    #[test]
+    fn test_format_price() {
+        assert_eq!(format_price(995), "995");
+        assert_eq!(format_price(5000), "5.0k");
+        assert_eq!(format_price(9900), "9.9k");
+        assert_eq!(format_price(316800), "316.8k");
+        assert_eq!(format_price(1000), "1.0k");
     }
 }

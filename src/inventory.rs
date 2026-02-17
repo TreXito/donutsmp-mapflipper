@@ -6,6 +6,7 @@ use anyhow::{Result, anyhow};
 use std::time::Duration;
 use tokio::time::sleep;
 use crate::config::Config;
+use crate::price_parser::{parse_price, format_price};
 
 // Minecraft server tick rate: 1 tick = 50 milliseconds
 const MS_PER_TICK: u64 = 50;
@@ -361,62 +362,86 @@ pub async fn unstack_maps(bot: &Client) -> Result<()> {
 
 /// List all maps from inventory on auction house
 ///
-/// Flow:
-/// 1. First unstack all maps so each map is in its own slot
-/// 2. Find all single map slots
-/// 3. For each map slot, list it individually using the /ah list command
+/// UPDATED STRATEGY: List entire stacks without unstacking
+/// When holding a stack, /ah sell lists the ENTIRE STACK as one listing
+/// Price must be fair: (single_price × stack_count × 0.5)
 ///
-/// The correct sell loop according to the problem statement:
-/// - First: while slot.count > 1, unstack (right-click + left-click)
-/// - Then: for each single map, select hotbar, /ah sell, confirm
+/// Flow:
+/// 1. Find all map slots (including stacks)
+/// 2. For each slot, move to hotbar and list the entire stack at calculated price
+/// 3. Price calculation: base_price × count × 0.5
 pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -> Result<()> {
     if slots_to_list.is_empty() {
         println!("[LISTING] No maps to list");
         return Ok(());
     }
     
-    println!("[LISTING] Starting to list {} map slot(s)...", slots_to_list.len());
+    println!("[LISTING] Starting to list maps (listing stacks without unstacking)...");
     
-    // Step 1: Unstack all maps first
-    println!("[LISTING] Step 1: Unstacking maps...");
-    if let Err(e) = unstack_maps(bot).await {
-        eprintln!("[LISTING] Error during unstacking: {}", e);
-        return Err(e);
-    }
+    // Parse the base sell price from config (e.g., "9.9k" -> 9900)
+    let base_price_str = format!("${}", config.sell_price);
+    let base_price = match parse_price(&base_price_str) {
+        Some(price) => price,
+        None => {
+            return Err(anyhow!("Failed to parse sell price from config: {}", config.sell_price));
+        }
+    };
+    println!("[LISTING] Base single map price: ${} ({})", base_price, config.sell_price);
     
-    // Step 2: Get fresh inventory snapshot after unstacking
+    // Get fresh inventory snapshot
     let inv = bot.get_inventory();
-    let single_maps: Vec<usize> = if let Some(menu) = inv.menu() {
+    let map_slots: Vec<(usize, i32)> = if let Some(menu) = inv.menu() {
         let slots = menu.slots();
         slots.iter().enumerate()
-            .filter(|(_, slot)| is_map_item(slot))
-            .map(|(idx, _)| idx)
+            .filter_map(|(idx, slot)| {
+                if is_map_item(slot) {
+                    if let ItemStack::Present(data) = slot {
+                        Some((idx, data.count))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
             .collect()
     } else {
         vec![]
     };
     
-    if single_maps.is_empty() {
-        println!("[LISTING] No maps found after unstacking");
+    if map_slots.is_empty() {
+        println!("[LISTING] No maps found in inventory");
         return Ok(());
     }
     
-    println!("[LISTING] Step 2: Found {} single map(s) to list", single_maps.len());
+    println!("[LISTING] Found {} map slot(s)", map_slots.len());
     
-    // Step 3: List each map one at a time
+    // Track how many listings we've made
+    let mut listings_made = 0;
     let max_listings = config.max_listings_per_cycle as usize;
-    let maps_to_list = single_maps.iter().take(max_listings).copied().collect::<Vec<_>>();
     
-    println!("[LISTING] Step 3: Listing up to {} maps...", maps_to_list.len());
-    
-    for (idx, map_slot) in maps_to_list.iter().enumerate() {
-        println!("[LISTING] Listing map {}/{} from slot {}...", idx + 1, maps_to_list.len(), map_slot);
+    // List each stack
+    for (slot_idx, stack_count) in map_slots {
+        if listings_made >= max_listings {
+            println!("[LISTING] Reached max listings per cycle ({})", max_listings);
+            break;
+        }
         
-        // Move map to hotbar slot 0 if not already there
+        println!("[LISTING] Processing slot {} with {} map(s)...", slot_idx, stack_count);
+        
+        // Calculate fair price for the stack: base_price × count × 0.5
+        let stack_price = (base_price as f64 * stack_count as f64 * 0.5) as u32;
+        let price_str = format_price(stack_price);
+        
+        println!("[LISTING] Stack of {} maps: ${} each × {} × 0.5 = ${} total ({})", 
+                 stack_count, base_price, stack_count, stack_price, price_str);
+        
+        // Move stack to hotbar slot 0
         const HOTBAR_SLOT_0: usize = 36;
-        if *map_slot != HOTBAR_SLOT_0 {
+        if slot_idx != HOTBAR_SLOT_0 {
+            println!("[LISTING] Moving stack from slot {} to hotbar slot 0...", slot_idx);
             let inv_handle = bot.get_inventory();
-            inv_handle.left_click(*map_slot);
+            inv_handle.left_click(slot_idx);
             sleep(Duration::from_millis(200)).await;
             
             let inv_handle2 = bot.get_inventory();
@@ -424,12 +449,12 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
             sleep(Duration::from_millis(200)).await;
         }
         
-        // Select hotbar slot 0
+        // Select hotbar slot 0 to hold the stack
         bot.set_selected_hotbar_slot(0);
         sleep(Duration::from_millis(300)).await;
         
-        // Send /ah sell command (using sell_price from config, e.g., "9.9k")
-        let command = format!("/ah sell {}", config.sell_price);
+        // Send /ah sell command with calculated price for the stack
+        let command = format!("/ah sell {}", price_str);
         println!("[LISTING] Sending command: {}", command);
         bot.chat(&command);
         sleep(Duration::from_millis(500)).await;
@@ -449,46 +474,53 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                 std::mem::forget(confirm_container);
                 
                 // Wait for the window to close and server to update inventory
-                // Server needs time to process the listing and update client inventory state
                 sleep(Duration::from_millis(1000)).await;
                 
-                // Verify map was consumed by checking inventory
+                // Verify listing by checking if slot is now empty or changed
                 let verify_inv = bot.get_inventory();
                 let mut listing_success = false;
                 if let Some(menu) = verify_inv.menu() {
                     let slots = menu.slots();
                     if HOTBAR_SLOT_0 < slots.len() {
-                        if is_map_item(&slots[HOTBAR_SLOT_0]) {
-                            println!("[LISTING] WARNING: Map still in slot {} after listing - listing may have failed!", HOTBAR_SLOT_0);
-                            // listing_success already false by default
-                        } else if slots[HOTBAR_SLOT_0].is_empty() {
-                            println!("[LISTING] ✓ Verified: Map removed from slot {}", HOTBAR_SLOT_0);
-                            listing_success = true;
-                        } else {
-                            // Different item in slot, consider it consumed
-                            println!("[LISTING] ✓ Verified: Different item in slot {}, map was consumed", HOTBAR_SLOT_0);
-                            listing_success = true;
+                        match &slots[HOTBAR_SLOT_0] {
+                            ItemStack::Empty => {
+                                println!("[LISTING] ✓ Slot now empty - stack listed successfully");
+                                listing_success = true;
+                            }
+                            ItemStack::Present(data) if is_map_item(&slots[HOTBAR_SLOT_0]) => {
+                                let remaining = data.count;
+                                if remaining < stack_count {
+                                    println!("[LISTING] ✓ Partial listing - {} maps remain (was {})", remaining, stack_count);
+                                    listing_success = true;
+                                } else {
+                                    println!("[LISTING] ✗ Stack unchanged - listing failed (still {} maps)", remaining);
+                                }
+                            }
+                            _ => {
+                                println!("[LISTING] ✓ Different item in slot, maps were consumed");
+                                listing_success = true;
+                            }
                         }
                     }
                 }
                 
                 if listing_success {
-                    println!("[LISTING] ✓ Map {} listed successfully", idx + 1);
+                    listings_made += 1;
+                    println!("[LISTING] ✓ Successfully listed stack {} / {}", listings_made, max_listings);
                 } else {
-                    println!("[LISTING] ✗ Map {} listing may have failed - map still present", idx + 1);
+                    println!("[LISTING] ✗ Listing verification failed - skipping");
                 }
                 
                 // Wait between listings to avoid command cooldown
                 sleep(Duration::from_millis(config.delay_between_listings)).await;
             }
             None => {
-                println!("[LISTING] ERROR: Confirmation window did not open for map at slot {}", map_slot);
-                // Continue to next map instead of failing entire operation
+                println!("[LISTING] ERROR: Confirmation window did not open for stack at slot {}", slot_idx);
             }
         }
     }
     
-    println!("[LISTING] Finished listing {} map(s)", maps_to_list.len());
+    println!("[LISTING] Finished - listed {} stack(s)", listings_made);
     Ok(())
 }
 
