@@ -429,13 +429,23 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
         
         println!("[LISTING] Processing slot {} with {} map(s)...", slot_idx, stack_count);
         
-        // Calculate fair price for the stack: base_price × count × 0.5
-        // Using integer arithmetic to avoid floating-point precision issues
-        let stack_price = (base_price * stack_count as u32) / 2;
-        let price_str = format_price(stack_price);
+        // Calculate price: single maps get full price, stacks get 50% discount
+        let price_str = if stack_count == 1 {
+            // Single map: no discount, use configured price directly
+            config.sell_price.clone()
+        } else {
+            // Stack (2+ maps): apply bulk discount (50% off)
+            let stack_price = (base_price * stack_count as u32) / 2;
+            format_price(stack_price)
+        };
         
-        println!("[LISTING] Stack of {} maps: ${} each × {} × 0.5 = ${} total ({})", 
-                 stack_count, base_price, stack_count, stack_price, price_str);
+        if stack_count == 1 {
+            println!("[LISTING] Single map: ${} (no discount)", price_str);
+        } else {
+            let stack_price = (base_price * stack_count as u32) / 2;
+            println!("[LISTING] Stack of {} maps: ${} each × {} × 0.5 = ${} total ({})", 
+                     stack_count, base_price, stack_count, stack_price, price_str);
+        }
         
         // Move stack to hotbar slot 0
         const HOTBAR_SLOT_0: usize = 36;
@@ -458,12 +468,14 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
             
             // Verify the move
             let verify_handle = bot.get_inventory();
+            let mut move_succeeded = false;
             if let Some(menu) = verify_handle.menu() {
                 let slots = menu.slots();
                 if HOTBAR_SLOT_0 < slots.len() {
                     match &slots[HOTBAR_SLOT_0] {
                         ItemStack::Present(data) if is_map_item(&slots[HOTBAR_SLOT_0]) => {
                             println!("[INVENTORY DEBUG] ✓ Verified: {} maps now in hotbar slot 0", data.count);
+                            move_succeeded = true;
                         }
                         ItemStack::Empty => {
                             println!("[INVENTORY DEBUG] ✗ WARNING: Hotbar slot 0 is empty after move!");
@@ -473,6 +485,12 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                         }
                     }
                 }
+            }
+            
+            // Bug fix: If move failed, skip this listing attempt
+            if !move_succeeded {
+                println!("[LISTING] Move to hotbar failed, skipping slot {} to avoid listing with empty hand", slot_idx);
+                continue;
             }
         } else {
             println!("[LISTING] Stack already in hotbar slot 0");
@@ -535,8 +553,11 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                 // Forget the handle to prevent early closure
                 std::mem::forget(confirm_container);
                 
-                // Wait for the window to close and server to update inventory
-                sleep(Duration::from_millis(1000)).await;
+                // Bug fix: Wait longer after confirming for server to update inventory
+                // The server sends inventory updates asynchronously after window closes
+                // First wait for window to close, then wait additional time for inventory sync
+                println!("[LISTING] Waiting for window to close and inventory to sync...");
+                sleep(Duration::from_millis(2000)).await;
                 
                 // Verify listing by checking if slot is now empty or changed
                 let verify_inv = bot.get_inventory();
@@ -592,6 +613,9 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
 /// Get a snapshot of which inventory slots contain maps
 ///
 /// This is used to track which maps are new after a purchase
+/// 
+/// IMPORTANT: Only scans slots 9-44 (main inventory + hotbar)
+/// Skips slots 0-8 (crafting output, grid, armor) and 45 (offhand)
 pub fn get_map_slots(bot: &Client) -> Vec<usize> {
     let inventory_handle = bot.get_inventory();
     let mut map_slots = Vec::new();
@@ -599,7 +623,10 @@ pub fn get_map_slots(bot: &Client) -> Vec<usize> {
     if let Some(menu) = inventory_handle.menu() {
         let slots = menu.slots();
         
-        for (idx, slot) in slots.iter().enumerate() {
+        // Only scan slots 9-44: main inventory (9-35) + hotbar (36-44)
+        // Skip slots 0-8 (crafting + armor) and 45 (offhand)
+        for idx in 9..slots.len().min(45) {
+            let slot = &slots[idx];
             if slot.is_present() && is_map_item(slot) {
                 map_slots.push(idx);
             }
