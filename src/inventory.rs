@@ -301,10 +301,10 @@ pub async fn unstack_maps(bot: &Client) -> Result<()> {
                         sleep(Duration::from_millis(UNSTACK_DELAY)).await;
                         
                         // Get another fresh handle for the left-click to ensure correct container ID
-                        let inv_handle2 = bot.get_inventory();
+                        let inv_handle_placement = bot.get_inventory();
                         
                         // Left-click the empty slot to place it
-                        inv_handle2.left_click(empty_idx);
+                        inv_handle_placement.left_click(empty_idx);
                         sleep(Duration::from_millis(UNSTACK_DELAY)).await;
                     }
                     None => {
