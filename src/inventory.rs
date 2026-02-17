@@ -460,7 +460,7 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                     if HOTBAR_SLOT_0 < slots.len() {
                         if is_map_item(&slots[HOTBAR_SLOT_0]) {
                             println!("[LISTING] WARNING: Map still in slot {} after listing - listing may have failed!", HOTBAR_SLOT_0);
-                            listing_success = false;
+                            // listing_success already false by default
                         } else if slots[HOTBAR_SLOT_0].is_empty() {
                             println!("[LISTING] ✓ Verified: Map removed from slot {}", HOTBAR_SLOT_0);
                             listing_success = true;
