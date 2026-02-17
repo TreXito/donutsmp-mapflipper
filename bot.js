@@ -9,6 +9,19 @@ process.stdout.write = function(chunk, ...a) { if (_shouldFilterLog(chunk)) retu
 process.stderr.write = function(chunk, ...a) { if (_shouldFilterLog(chunk)) return true; return _stderrWrite(chunk, ...a); };
 // === END FILTER ===
 
+// Global error handlers to prevent crashes from unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[PROCESS] Unhandled Promise Rejection:', reason);
+  console.error('[PROCESS] Promise:', promise);
+  // Log but don't exit - let the bot continue running
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[PROCESS] Uncaught Exception:', error);
+  // For uncaught exceptions, we should exit gracefully
+  process.exit(1);
+});
+
 const mineflayer = require('mineflayer');
 const fs = require('fs');
 const path = require('path');
@@ -560,6 +573,8 @@ async function buyMap(window, mapSlot, mapPrice, mapSeller) {
             { name: 'Price', value: `$${mapPrice}`, inline: true },
             { name: 'Seller', value: mapSeller || 'Unknown', inline: true }
           ]
+        }).catch(err => {
+          console.error('[PURCHASE] Error sending purchase webhook:', err);
         });
       };
       
@@ -1387,7 +1402,10 @@ function createBot() {
     // Check for AFK detection
     const normalized = normalizeText(msg);
     if (normalized.includes('teleported to') && normalized.includes('afk')) {
-      handleAfkDetection();
+      // Call async function and catch any errors to prevent unhandled rejections
+      handleAfkDetection().catch(err => {
+        console.error('[CHAT] Error handling AFK detection:', err);
+      });
     }
     
     // Check for map sale - format: "Username bought your Map for $price"
@@ -1407,6 +1425,7 @@ function createBot() {
       }
       
       console.log(`[SALE] ${buyer} bought a map for $${salePrice}`);
+      // Call async function and catch any errors to prevent unhandled rejections
       sendWebhook('sale', {
         message: `💰 Sold a map!`,
         color: 5763719,
@@ -1414,6 +1433,8 @@ function createBot() {
           { name: 'Buyer', value: buyer, inline: true },
           { name: 'Price', value: `$${salePrice}`, inline: true }
         ]
+      }).catch(err => {
+        console.error('[CHAT] Error sending sale webhook:', err);
       });
     }
   });
@@ -1448,6 +1469,8 @@ function createBot() {
       fields: [
         { name: 'Reason', value: reasonText }
       ]
+    }).catch(err => {
+      console.error('[KICKED] Error sending kicked webhook:', err);
     });
     reconnect();
   });
@@ -1471,6 +1494,8 @@ function createBot() {
       fields: [
         { name: 'Error', value: err.message || 'Unknown error' }
       ]
+    }).catch(webhookErr => {
+      console.error('[ERROR] Error sending error webhook:', webhookErr);
     });
   });
   
