@@ -196,6 +196,46 @@ If webhooks aren't working:
    ```
    All other fields (displayName, events) are optional and will use defaults.
 
+## Logging Configuration
+
+The bot uses Rust's standard logging system via the `RUST_LOG` environment variable. By default, it shows all messages at `info` level and above.
+
+### Suppress Azalea Protocol Warnings
+
+You may see harmless warnings like "The Boolean value was not 0 or 1, but 145" from the Azalea protocol parser. These can be safely suppressed:
+
+```bash
+# Linux/macOS
+RUST_LOG=warn,azalea_buf=error cargo run --release
+
+# Windows (PowerShell)
+$env:RUST_LOG="warn,azalea_buf=error"; cargo run --release
+
+# Windows (CMD)
+set RUST_LOG=warn,azalea_buf=error && cargo run --release
+```
+
+### Log Level Options
+
+- `error` - Only errors
+- `warn` - Warnings and errors
+- `info` - General information (default)
+- `debug` - Detailed debugging info
+- `trace` - Very detailed tracing
+
+### Examples
+
+```bash
+# Show only bot-specific logs at info level, suppress everything else
+RUST_LOG=donutsmp_mapflipper=info cargo run --release
+
+# Show all warnings, but suppress azalea_buf warnings completely
+RUST_LOG=warn,azalea_buf=error cargo run --release
+
+# Debug mode - show everything
+RUST_LOG=debug cargo run --release
+```
+
 ## How It Works
 
 1. **Connect to Server**: Bot joins donutsmp.net and waits after spawning

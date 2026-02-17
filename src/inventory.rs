@@ -289,13 +289,14 @@ pub async fn unstack_maps(bot: &Client) -> Result<()> {
         let (stack_slot, count) = stacked_slot.unwrap();
         println!("[INVENTORY] Found stack of {} maps at slot {}, splitting...", count, stack_slot);
         
-        // Find an empty slot
+        // Find an empty slot in main inventory (9-35) or hotbar (36-44)
+        // NEVER use slots 0-8 (crafting output + grid, armor) or 45 (offhand)
         let inv_handle = bot.get_inventory();
         let empty_slot = if let Some(menu) = inv_handle.menu() {
             let slots = menu.slots();
-            slots.iter().enumerate()
-                .find(|(_, slot)| slot.is_empty())
-                .map(|(idx, _)| idx)
+            // Only check slots 9-44 (main inventory + hotbar)
+            (9..=44)
+                .find(|&idx| idx < slots.len() && slots[idx].is_empty())
         } else {
             None
         };
@@ -306,13 +307,32 @@ pub async fn unstack_maps(bot: &Client) -> Result<()> {
                 // This splits the stack into two parts
                 println!("[INVENTORY] Right-clicking slot {} to pick up half...", stack_slot);
                 inv_handle.right_click(stack_slot);
-                sleep(Duration::from_millis(150)).await;
+                sleep(Duration::from_millis(300)).await;
                 
                 // Get a fresh handle and left-click empty slot to place the half
                 let inv_handle2 = bot.get_inventory();
                 println!("[INVENTORY] Left-clicking empty slot {} to place...", empty_idx);
                 inv_handle2.left_click(empty_idx);
-                sleep(Duration::from_millis(150)).await;
+                
+                // Wait for server to acknowledge the change (300ms)
+                sleep(Duration::from_millis(300)).await;
+                
+                // Verify the split actually worked by checking the original slot count
+                let verify_handle = bot.get_inventory();
+                if let Some(menu) = verify_handle.menu() {
+                    let slots = menu.slots();
+                    if stack_slot < slots.len() {
+                        if let ItemStack::Present(data) = &slots[stack_slot] {
+                            let new_count = data.count;
+                            if new_count >= count {
+                                println!("[INVENTORY] WARNING: Split operation failed - count didn't decrease (was {}, now {})", count, new_count);
+                                println!("[INVENTORY] Server may have rejected the click - retrying next iteration");
+                            } else {
+                                println!("[INVENTORY] ✓ Split verified: slot {} now has {} maps (was {})", stack_slot, new_count, count);
+                            }
+                        }
+                    }
+                }
             }
             None => {
                 println!("[INVENTORY] ERROR: No empty slots available to unstack!");
@@ -421,23 +441,47 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                 // Forget the handle to prevent early closure
                 std::mem::forget(confirm_container);
                 
-                println!("[LISTING] ✓ Map {} listed successfully", idx + 1);
+                // Wait for the window to close and server to update inventory
+                // This is critical - the server needs time to process the listing
+                sleep(Duration::from_millis(500)).await;
                 
-                // Wait between listings to avoid command cooldown
-                sleep(Duration::from_millis(config.delay_between_listings)).await;
+                // Wait additional time to ensure inventory state is updated
+                sleep(Duration::from_millis(500)).await;
                 
-                // Verify map is gone by checking inventory
+                // Verify map was consumed by checking inventory
                 let verify_inv = bot.get_inventory();
+                let mut listing_success = false;
                 if let Some(menu) = verify_inv.menu() {
                     let slots = menu.slots();
                     if HOTBAR_SLOT_0 < slots.len() {
-                        if let ItemStack::Present(_) = &slots[HOTBAR_SLOT_0] {
-                            println!("[LISTING] Warning: Map still in slot {} after listing!", HOTBAR_SLOT_0);
-                        } else {
-                            println!("[LISTING] ✓ Verified map removed from slot {}", HOTBAR_SLOT_0);
+                        match &slots[HOTBAR_SLOT_0] {
+                            ItemStack::Present(data) => {
+                                let item_name = format!("{:?}", data.kind);
+                                if item_name.to_lowercase().contains("map") {
+                                    println!("[LISTING] WARNING: Map still in slot {} after listing - listing may have failed!", HOTBAR_SLOT_0);
+                                    listing_success = false;
+                                } else {
+                                    // Different item in slot, consider it consumed
+                                    println!("[LISTING] ✓ Verified: Different item in slot {}, map was consumed", HOTBAR_SLOT_0);
+                                    listing_success = true;
+                                }
+                            }
+                            ItemStack::Empty => {
+                                println!("[LISTING] ✓ Verified: Map removed from slot {}", HOTBAR_SLOT_0);
+                                listing_success = true;
+                            }
                         }
                     }
                 }
+                
+                if listing_success {
+                    println!("[LISTING] ✓ Map {} listed successfully", idx + 1);
+                } else {
+                    println!("[LISTING] ✗ Map {} listing may have failed - map still present", idx + 1);
+                }
+                
+                // Wait between listings to avoid command cooldown
+                sleep(Duration::from_millis(config.delay_between_listings)).await;
             }
             None => {
                 println!("[LISTING] ERROR: Confirmation window did not open for map at slot {}", map_slot);
