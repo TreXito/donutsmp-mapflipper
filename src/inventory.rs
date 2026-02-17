@@ -16,6 +16,17 @@ const INVENTORY_MOVE_DELAY: u64 = 200;
 // Delay after selecting hotbar slot
 const HOTBAR_SELECTION_DELAY: u64 = 300;
 
+/// Check if an ItemStack contains a map
+/// Uses debug string matching as item.kind doesn't expose direct enum comparison
+fn is_map_item(item: &ItemStack) -> bool {
+    if let ItemStack::Present(data) = item {
+        let item_name = format!("{:?}", data.kind);
+        item_name.to_lowercase().contains("map")
+    } else {
+        false
+    }
+}
+
 pub struct MapSlot {
     pub slot: usize,
     pub price: u32,
@@ -268,8 +279,7 @@ pub async fn unstack_maps(bot: &Client) -> Result<()> {
             let mut found = None;
             for (idx, slot) in slots.iter().enumerate() {
                 if let ItemStack::Present(data) = slot {
-                    let item_name = format!("{:?}", data.kind);
-                    if item_name.to_lowercase().contains("map") && data.count > 1 {
+                    if is_map_item(slot) && data.count > 1 {
                         found = Some((idx, data.count));
                         break;
                     }
@@ -324,9 +334,11 @@ pub async fn unstack_maps(bot: &Client) -> Result<()> {
                     if stack_slot < slots.len() {
                         if let ItemStack::Present(data) = &slots[stack_slot] {
                             let new_count = data.count;
-                            if new_count >= count {
-                                println!("[INVENTORY] WARNING: Split operation failed - count didn't decrease (was {}, now {})", count, new_count);
-                                println!("[INVENTORY] Server may have rejected the click - retrying next iteration");
+                            if new_count == count {
+                                println!("[INVENTORY] WARNING: Split operation failed - count didn't change (still {})", count);
+                                println!("[INVENTORY] Server rejected the click - will retry next iteration");
+                            } else if new_count > count {
+                                println!("[INVENTORY] WARNING: Unexpected behavior - count increased from {} to {}", count, new_count);
                             } else {
                                 println!("[INVENTORY] ✓ Split verified: slot {} now has {} maps (was {})", stack_slot, new_count, count);
                             }
@@ -375,14 +387,7 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
     let single_maps: Vec<usize> = if let Some(menu) = inv.menu() {
         let slots = menu.slots();
         slots.iter().enumerate()
-            .filter(|(_, slot)| {
-                if let ItemStack::Present(data) = slot {
-                    let item_name = format!("{:?}", data.kind);
-                    item_name.to_lowercase().contains("map")
-                } else {
-                    false
-                }
-            })
+            .filter(|(_, slot)| is_map_item(slot))
             .map(|(idx, _)| idx)
             .collect()
     } else {
@@ -455,9 +460,8 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                     let slots = menu.slots();
                     if HOTBAR_SLOT_0 < slots.len() {
                         match &slots[HOTBAR_SLOT_0] {
-                            ItemStack::Present(data) => {
-                                let item_name = format!("{:?}", data.kind);
-                                if item_name.to_lowercase().contains("map") {
+                            ItemStack::Present(_) => {
+                                if is_map_item(&slots[HOTBAR_SLOT_0]) {
                                     println!("[LISTING] WARNING: Map still in slot {} after listing - listing may have failed!", HOTBAR_SLOT_0);
                                     listing_success = false;
                                 } else {
@@ -505,13 +509,8 @@ pub fn get_map_slots(bot: &Client) -> Vec<usize> {
         let slots = menu.slots();
         
         for (idx, slot) in slots.iter().enumerate() {
-            if slot.is_present() {
-                if let ItemStack::Present(data) = slot {
-                    let item_name = format!("{:?}", data.kind);
-                    if item_name.to_lowercase().contains("map") {
-                        map_slots.push(idx);
-                    }
-                }
+            if slot.is_present() && is_map_item(slot) {
+                map_slots.push(idx);
             }
         }
     }
