@@ -457,9 +457,8 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
         }
         
         // Move stack to hotbar slot 0
-        // Hotbar slot 0 is at index 36 (HOTBAR_START_SLOT)
-        const HOTBAR_SLOT_0: usize = HOTBAR_START_SLOT;
-        if slot_idx != HOTBAR_SLOT_0 {
+        // Hotbar slot 0 is at index HOTBAR_START_SLOT (36)
+        if slot_idx != HOTBAR_START_SLOT {
             println!("[LISTING] Moving stack from slot {} to hotbar slot 0...", slot_idx);
             
             // Log before first click
@@ -471,9 +470,9 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
             sleep(Duration::from_millis(200)).await;
             
             // Log before second click
-            println!("[INVENTORY DEBUG] About to left-click slot {} (place stack)", HOTBAR_SLOT_0);
+            println!("[INVENTORY DEBUG] About to left-click slot {} (place stack)", HOTBAR_START_SLOT);
             let inv_handle2 = bot.get_inventory();
-            inv_handle2.left_click(HOTBAR_SLOT_0);
+            inv_handle2.left_click(HOTBAR_START_SLOT);
             sleep(Duration::from_millis(200)).await;
             
             // Verify the move
@@ -481,9 +480,9 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
             let mut move_succeeded = false;
             if let Some(menu) = verify_handle.menu() {
                 let slots = menu.slots();
-                if HOTBAR_SLOT_0 < slots.len() {
-                    match &slots[HOTBAR_SLOT_0] {
-                        ItemStack::Present(data) if is_map_item(&slots[HOTBAR_SLOT_0]) => {
+                if HOTBAR_START_SLOT < slots.len() {
+                    match &slots[HOTBAR_START_SLOT] {
+                        ItemStack::Present(data) if is_map_item(&slots[HOTBAR_START_SLOT]) => {
                             println!("[INVENTORY DEBUG] ✓ Verified: {} maps now in hotbar slot 0", data.count);
                             move_succeeded = true;
                         }
@@ -515,9 +514,9 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
         let pre_list_inv = bot.get_inventory();
         if let Some(menu) = pre_list_inv.menu() {
             let slots = menu.slots();
-            if HOTBAR_SLOT_0 < slots.len() {
-                match &slots[HOTBAR_SLOT_0] {
-                    ItemStack::Present(data) if is_map_item(&slots[HOTBAR_SLOT_0]) => {
+            if HOTBAR_START_SLOT < slots.len() {
+                match &slots[HOTBAR_START_SLOT] {
+                    ItemStack::Present(data) if is_map_item(&slots[HOTBAR_START_SLOT]) => {
                         println!("[LISTING DEBUG] Holding {} maps in selected hotbar slot 0", data.count);
                     }
                     ItemStack::Empty => {
@@ -574,13 +573,13 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                 let mut listing_success = false;
                 if let Some(menu) = verify_inv.menu() {
                     let slots = menu.slots();
-                    if HOTBAR_SLOT_0 < slots.len() {
-                        match &slots[HOTBAR_SLOT_0] {
+                    if HOTBAR_START_SLOT < slots.len() {
+                        match &slots[HOTBAR_START_SLOT] {
                             ItemStack::Empty => {
                                 println!("[LISTING] ✓ Slot now empty - stack listed successfully");
                                 listing_success = true;
                             }
-                            ItemStack::Present(data) if is_map_item(&slots[HOTBAR_SLOT_0]) => {
+                            ItemStack::Present(data) if is_map_item(&slots[HOTBAR_START_SLOT]) => {
                                 let remaining = data.count;
                                 if remaining < stack_count {
                                     // Partial listing occurred - this might indicate server only listed some maps

@@ -72,7 +72,7 @@ mod tests {
     }
     
     #[test]
-    fn test_listing_price_logic() {
+    fn test_single_map_full_price_and_stack_discount() {
         // Test the listing price logic as implemented in inventory.rs list_maps function
         let base_price = 9900; // $9.9k
         let sell_price_str = "9.9k";
