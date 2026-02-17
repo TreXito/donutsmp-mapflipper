@@ -33,7 +33,7 @@ pub fn strip_minecraft_colors(text: &str) -> String {
 pub fn format_price(price: u32) -> String {
     if price >= 1000 {
         let k_value = price as f64 / 1000.0;
-        // Round to 1 decimal place
+        // Format to 1 decimal place (rounds during formatting)
         format!("{:.1}k", k_value)
     } else {
         price.to_string()

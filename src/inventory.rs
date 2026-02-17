@@ -430,7 +430,8 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
         println!("[LISTING] Processing slot {} with {} map(s)...", slot_idx, stack_count);
         
         // Calculate fair price for the stack: base_price × count × 0.5
-        let stack_price = (base_price as f64 * stack_count as f64 * 0.5) as u32;
+        // Using integer arithmetic to avoid floating-point precision issues
+        let stack_price = (base_price * stack_count as u32) / 2;
         let price_str = format_price(stack_price);
         
         println!("[LISTING] Stack of {} maps: ${} each × {} × 0.5 = ${} total ({})", 
@@ -551,8 +552,11 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                             ItemStack::Present(data) if is_map_item(&slots[HOTBAR_SLOT_0]) => {
                                 let remaining = data.count;
                                 if remaining < stack_count {
-                                    println!("[LISTING] ✓ Partial listing - {} maps remain (was {})", remaining, stack_count);
-                                    listing_success = true;
+                                    // Partial listing occurred - this might indicate server only listed some maps
+                                    // This could happen if /ah sell command lists ONE map at a time instead of the whole stack
+                                    println!("[LISTING] ⚠ Partial consumption: {} maps remain (was {})", remaining, stack_count);
+                                    println!("[LISTING] This suggests server listed only {} map(s), not the entire stack", stack_count - remaining);
+                                    listing_success = true; // Consider it partially successful
                                 } else {
                                     println!("[LISTING] ✗ Stack unchanged - listing failed (still {} maps)", remaining);
                                 }
