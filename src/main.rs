@@ -36,9 +36,6 @@ impl Default for BotState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Setup logging
-    tracing_subscriber::fmt::init();
-
     println!("[STARTUP] DonutSMP Map Flipper Bot (Rust/Azalea)");
     
     // Load configuration
