@@ -70,4 +70,42 @@ mod tests {
         assert_eq!(format_price(316800), "316.8k");
         assert_eq!(format_price(1000), "1.0k");
     }
+    
+    #[test]
+    fn test_single_map_full_price_and_stack_discount() {
+        // Test the listing price logic as implemented in inventory.rs list_maps function
+        let base_price = 9900; // $9.9k
+        let sell_price_str = "9.9k";
+        
+        // Single map: no discount, use full price
+        let count = 1;
+        let price_str = if count == 1 {
+            sell_price_str.to_string()
+        } else {
+            let stack_price = (base_price * count as u32) / 2;
+            format_price(stack_price)
+        };
+        assert_eq!(price_str, "9.9k", "Single map should be listed at full price");
+        
+        // Stack of 2 maps: 50% discount
+        let count = 2;
+        let stack_price = (base_price * count as u32) / 2;
+        let price_str = format_price(stack_price);
+        assert_eq!(stack_price, 9900, "Stack of 2 should be 9900 total (50% off each)");
+        assert_eq!(price_str, "9.9k");
+        
+        // Stack of 32 maps: 50% discount
+        let count = 32;
+        let stack_price = (base_price * count as u32) / 2;
+        let price_str = format_price(stack_price);
+        assert_eq!(stack_price, 158400, "Stack of 32 should be 158400 total");
+        assert_eq!(price_str, "158.4k");
+        
+        // Stack of 64 maps: 50% discount
+        let count = 64;
+        let stack_price = (base_price * count as u32) / 2;
+        let price_str = format_price(stack_price);
+        assert_eq!(stack_price, 316800, "Stack of 64 should be 316800 total");
+        assert_eq!(price_str, "316.8k");
+    }
 }
