@@ -11,15 +11,34 @@ process.stderr.write = function(chunk, ...a) { if (_shouldFilterLog(chunk)) retu
 
 // Global error handlers to prevent crashes from unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('[PROCESS] Unhandled Promise Rejection:', reason);
-  console.error('[PROCESS] Promise:', promise);
+  console.error('[PROCESS] Unhandled Promise Rejection:');
+  if (reason instanceof Error) {
+    console.error('[PROCESS] Error:', reason.message);
+    console.error('[PROCESS] Stack:', reason.stack);
+  } else {
+    console.error('[PROCESS] Reason:', reason);
+  }
   // Log but don't exit - let the bot continue running
 });
 
 process.on('uncaughtException', (error) => {
   console.error('[PROCESS] Uncaught Exception:', error);
-  // For uncaught exceptions, we should exit gracefully
-  process.exit(1);
+  console.error('[PROCESS] Stack:', error.stack);
+  
+  // Attempt graceful shutdown
+  try {
+    if (typeof bot !== 'undefined' && bot) {
+      console.error('[PROCESS] Attempting to disconnect bot...');
+      bot.quit('Uncaught exception - shutting down');
+    }
+  } catch (cleanupError) {
+    console.error('[PROCESS] Error during cleanup:', cleanupError);
+  }
+  
+  // Exit after a brief delay to allow cleanup
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
 });
 
 const mineflayer = require('mineflayer');
