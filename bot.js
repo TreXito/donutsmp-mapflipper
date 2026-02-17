@@ -26,6 +26,7 @@ process.on('uncaughtException', (error) => {
   console.error('[PROCESS] Stack:', error.stack);
   
   // Attempt graceful shutdown
+  // Note: bot is declared at module scope (see line ~176), so it will be accessible here
   try {
     if (typeof bot !== 'undefined' && bot) {
       console.error('[PROCESS] Attempting to disconnect bot...');
