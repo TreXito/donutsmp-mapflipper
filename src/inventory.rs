@@ -13,6 +13,12 @@ const MS_PER_TICK: u64 = 50;
 // Delay between unstack operations
 const UNSTACK_DELAY: u64 = 100;
 
+// Delay after moving items in inventory
+const INVENTORY_MOVE_DELAY: u64 = 200;
+
+// Delay after selecting hotbar slot
+const HOTBAR_SELECTION_DELAY: u64 = 300;
+
 pub struct MapSlot {
     pub slot: usize,
     pub price: u32,
@@ -372,17 +378,22 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
             // Step 1: Move map to hotbar slot 0 if it's not already there
             if slot_idx != HOTBAR_SLOT_0 {
                 println!("[LISTING] Moving map from slot {} to hotbar slot 0...", slot_idx);
-                // Use shift-click to move item to hotbar quickly
-                inventory_handle.shift_click(slot_idx);
-                // Wait for the move to complete
-                sleep(Duration::from_millis(200)).await;
+                
+                // Use explicit click operations to ensure the item goes to the exact slot we want
+                // First, left-click the source slot to pick up the item
+                inventory_handle.left_click(slot_idx);
+                sleep(Duration::from_millis(INVENTORY_MOVE_DELAY)).await;
+                
+                // Then, left-click hotbar slot 0 to place it there
+                inventory_handle.left_click(HOTBAR_SLOT_0);
+                sleep(Duration::from_millis(INVENTORY_MOVE_DELAY)).await;
             }
             
             // Step 2: Hold the item in hotbar slot 0
             println!("[LISTING] Selecting hotbar slot 0 to hold the map...");
             bot.set_selected_hotbar_slot(0);
             // Wait for the selection to be processed
-            sleep(Duration::from_millis(300)).await;
+            sleep(Duration::from_millis(HOTBAR_SELECTION_DELAY)).await;
             
             // Step 3: Send /ah list command (not /ah sell)
             bot.chat(&format!("/ah list {}", config.sell_price));
