@@ -88,6 +88,9 @@ async fn main() -> Result<()> {
         println!("[CONFIG] Webhook events: {}", enabled_events.join(", "));
     } else {
         println!("[CONFIG] Webhook notifications: DISABLED");
+        if !config.webhook.url.is_empty() {
+            println!("[CONFIG] Note: Webhook URL is set but webhooks are disabled. Set 'enabled: true' in webhook config to enable.");
+        }
     }
 
     let _state = BotState {
