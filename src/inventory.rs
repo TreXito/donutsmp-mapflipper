@@ -245,7 +245,7 @@ pub async fn purchase_map(
 pub async fn unstack_maps(bot: &Client) -> Result<()> {
     println!("[INVENTORY] Checking for stacked maps...");
     
-    // Get inventory handle
+    // Get a fresh inventory handle to check current state
     let inventory_handle = bot.get_inventory();
     
     if let Some(menu) = inventory_handle.menu() {
@@ -275,24 +275,36 @@ pub async fn unstack_maps(bot: &Client) -> Result<()> {
             // Unstack by right-clicking to pick up 1, then left-clicking to place in empty slot
             // We need to do this (count - 1) times to separate all maps
             for _ in 0..(count - 1) {
-                // Find an empty slot
-                let slots = menu.slots();
-                let mut empty_slot = None;
-                for (idx, slot) in slots.iter().enumerate() {
-                    if slot.is_empty() {
-                        empty_slot = Some(idx);
-                        break;
+                // Get a fresh inventory handle for each click operation
+                // This ensures we use the current container ID which may change between operations
+                let inv_handle = bot.get_inventory();
+                
+                // Find an empty slot in the current inventory state
+                let empty_slot = if let Some(menu) = inv_handle.menu() {
+                    let slots = menu.slots();
+                    let mut found_slot = None;
+                    for (idx, slot) in slots.iter().enumerate() {
+                        if slot.is_empty() {
+                            found_slot = Some(idx);
+                            break;
+                        }
                     }
-                }
+                    found_slot
+                } else {
+                    None
+                };
                 
                 match empty_slot {
                     Some(empty_idx) => {
                         // Right-click the stack to pick up 1 map
-                        inventory_handle.right_click(stack_slot);
+                        inv_handle.right_click(stack_slot);
                         sleep(Duration::from_millis(UNSTACK_DELAY)).await;
                         
+                        // Get another fresh handle for the left-click to ensure correct container ID
+                        let inv_handle2 = bot.get_inventory();
+                        
                         // Left-click the empty slot to place it
-                        inventory_handle.left_click(empty_idx);
+                        inv_handle2.left_click(empty_idx);
                         sleep(Duration::from_millis(UNSTACK_DELAY)).await;
                     }
                     None => {
