@@ -17,6 +17,15 @@ const INVENTORY_MOVE_DELAY: u64 = 200;
 // Delay after selecting hotbar slot
 const HOTBAR_SELECTION_DELAY: u64 = 300;
 
+// Inventory slot boundaries (Minecraft 1.21.1)
+// Slots 0-8: Crafting output (0), crafting grid (1-4), armor (5-8)
+// Slots 9-35: Main inventory
+// Slots 36-44: Hotbar
+// Slot 45: Offhand
+const INVENTORY_START_SLOT: usize = 9;
+const HOTBAR_START_SLOT: usize = 36;
+const OFFHAND_SLOT: usize = 45;
+
 /// Check if an ItemStack contains a map
 /// 
 /// Note: Uses debug string matching as Azalea's item.kind doesn't expose direct enum comparison.
@@ -308,7 +317,7 @@ pub async fn unstack_maps(bot: &Client) -> Result<()> {
         let empty_slot = if let Some(menu) = inv_handle.menu() {
             let slots = menu.slots();
             // Only check slots 9-44 (main inventory + hotbar), but respect actual slot count
-            (9..slots.len().min(45))
+            (INVENTORY_START_SLOT..slots.len().min(OFFHAND_SLOT))
                 .find(|&idx| slots[idx].is_empty())
         } else {
             None
@@ -430,25 +439,26 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
         println!("[LISTING] Processing slot {} with {} map(s)...", slot_idx, stack_count);
         
         // Calculate price: single maps get full price, stacks get 50% discount
-        let price_str = if stack_count == 1 {
+        let (price_str, stack_price_opt) = if stack_count == 1 {
             // Single map: no discount, use configured price directly
-            config.sell_price.clone()
+            (config.sell_price.clone(), None)
         } else {
             // Stack (2+ maps): apply bulk discount (50% off)
             let stack_price = (base_price * stack_count as u32) / 2;
-            format_price(stack_price)
+            (format_price(stack_price), Some(stack_price))
         };
         
         if stack_count == 1 {
             println!("[LISTING] Single map: ${} (no discount)", price_str);
         } else {
-            let stack_price = (base_price * stack_count as u32) / 2;
+            let stack_price = stack_price_opt.unwrap();
             println!("[LISTING] Stack of {} maps: ${} each × {} × 0.5 = ${} total ({})", 
                      stack_count, base_price, stack_count, stack_price, price_str);
         }
         
         // Move stack to hotbar slot 0
-        const HOTBAR_SLOT_0: usize = 36;
+        // Hotbar slot 0 is at index 36 (HOTBAR_START_SLOT)
+        const HOTBAR_SLOT_0: usize = HOTBAR_START_SLOT;
         if slot_idx != HOTBAR_SLOT_0 {
             println!("[LISTING] Moving stack from slot {} to hotbar slot 0...", slot_idx);
             
@@ -625,7 +635,7 @@ pub fn get_map_slots(bot: &Client) -> Vec<usize> {
         
         // Only scan slots 9-44: main inventory (9-35) + hotbar (36-44)
         // Skip slots 0-8 (crafting + armor) and 45 (offhand)
-        for idx in 9..slots.len().min(45) {
+        for idx in INVENTORY_START_SLOT..slots.len().min(OFFHAND_SLOT) {
             let slot = &slots[idx];
             if slot.is_present() && is_map_item(slot) {
                 map_slots.push(idx);
