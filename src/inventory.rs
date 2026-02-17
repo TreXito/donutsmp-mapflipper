@@ -298,6 +298,10 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                                 std::mem::forget(confirm_container);
                                 
                                 println!("[LISTING] Map listed successfully");
+                                
+                                // Step 4: Wait before next listing to avoid server command cooldown
+                                // This prevents "You need to wait another 0.25 seconds" spam kick
+                                sleep(Duration::from_millis(config.delay_between_listings)).await;
                             }
                             None => {
                                 println!("[LISTING] ERROR: Confirmation GUI did not open, skipping this map");

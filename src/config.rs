@@ -79,6 +79,8 @@ pub struct Config {
     pub delay_after_join: u64,
     #[serde(default = "default_window_timeout", rename = "windowTimeout")]
     pub window_timeout: u64,
+    #[serde(default = "default_delay_between_listings", rename = "delayBetweenListings")]
+    pub delay_between_listings: u64,
     #[serde(default, rename = "debugEvents")]
     pub debug_events: bool,
     #[serde(default = "default_true", rename = "enableAfkFarming")]
@@ -130,6 +132,11 @@ impl Config {
             if let Ok(enable_afk) = std::env::var("ENABLE_AFK_FARMING") {
                 config.enable_afk_farming = enable_afk == "true";
             }
+            if let Ok(delay) = std::env::var("DELAY_BETWEEN_LISTINGS") {
+                if let Ok(d) = delay.parse() {
+                    config.delay_between_listings = d;
+                }
+            }
             
             Ok(config)
         } else {
@@ -169,6 +176,10 @@ impl Config {
                 .ok()
                 .and_then(|t| t.parse().ok())
                 .unwrap_or_else(default_window_timeout),
+            delay_between_listings: std::env::var("DELAY_BETWEEN_LISTINGS")
+                .ok()
+                .and_then(|d| d.parse().ok())
+                .unwrap_or_else(default_delay_between_listings),
             debug_events: std::env::var("DEBUG_EVENTS")
                 .map(|v| v == "true")
                 .unwrap_or(false),
@@ -192,4 +203,5 @@ fn default_max_listings_per_cycle() -> u32 { 20 }
 fn default_delay_between_cycles() -> u64 { 5000 }
 fn default_delay_after_join() -> u64 { 5000 }
 fn default_window_timeout() -> u64 { 15000 }
+fn default_delay_between_listings() -> u64 { 1000 }
 fn default_display_name() -> String { "DonutSMP Map Flipper".to_string() }
