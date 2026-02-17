@@ -458,23 +458,16 @@ pub async fn list_maps(bot: &Client, config: &Config, slots_to_list: &[usize]) -
                 if let Some(menu) = verify_inv.menu() {
                     let slots = menu.slots();
                     if HOTBAR_SLOT_0 < slots.len() {
-                        match &slots[HOTBAR_SLOT_0] {
-                            ItemStack::Present(data) => {
-                                // Check item kind directly from matched data
-                                let item_name = format!("{:?}", data.kind);
-                                if item_name.to_lowercase().contains("map") {
-                                    println!("[LISTING] WARNING: Map still in slot {} after listing - listing may have failed!", HOTBAR_SLOT_0);
-                                    listing_success = false;
-                                } else {
-                                    // Different item in slot, consider it consumed
-                                    println!("[LISTING] ✓ Verified: Different item in slot {}, map was consumed", HOTBAR_SLOT_0);
-                                    listing_success = true;
-                                }
-                            }
-                            ItemStack::Empty => {
-                                println!("[LISTING] ✓ Verified: Map removed from slot {}", HOTBAR_SLOT_0);
-                                listing_success = true;
-                            }
+                        if is_map_item(&slots[HOTBAR_SLOT_0]) {
+                            println!("[LISTING] WARNING: Map still in slot {} after listing - listing may have failed!", HOTBAR_SLOT_0);
+                            listing_success = false;
+                        } else if slots[HOTBAR_SLOT_0].is_empty() {
+                            println!("[LISTING] ✓ Verified: Map removed from slot {}", HOTBAR_SLOT_0);
+                            listing_success = true;
+                        } else {
+                            // Different item in slot, consider it consumed
+                            println!("[LISTING] ✓ Verified: Different item in slot {}, map was consumed", HOTBAR_SLOT_0);
+                            listing_success = true;
                         }
                     }
                 }
