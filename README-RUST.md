@@ -7,6 +7,7 @@ A Minecraft bot written in Rust using Azalea that automates buying cheap maps fr
 - ✅ Rust-based implementation using azalea-rs
 - ✅ Automatic auction house monitoring
 - ✅ Smart price parsing (handles $995, $5K, $9.9K formats)
+- ✅ **AFK Farming** - Automatically teleports to random AFK location at startup to farm shards while flipping
 - ✅ Anti-AFK detection and handling
 - ✅ Auto-reconnect on disconnect (via Azalea)
 - ✅ Configurable buy/sell prices
@@ -57,6 +58,7 @@ A default `config.json` file is included in the repository. Simply edit it with 
   "delayAfterJoin": 5000,
   "windowTimeout": 15000,
   "debugEvents": false,
+  "enableAfkFarming": true,
   "webhook": {
     "enabled": false,
     "url": "",
@@ -86,6 +88,7 @@ A default `config.json` file is included in the repository. Simply edit it with 
 - `delayAfterJoin`: Wait time after spawning before starting (default: 5000)
 - `windowTimeout`: Timeout for window opening operations in ms (default: 15000)
 - `debugEvents`: Enable event debugging (default: false)
+- `enableAfkFarming`: Enable automatic AFK farming at startup (default: true)
 - `webhook`: Webhook configuration for Discord notifications
 
 ### Alternative: Using Environment Variables

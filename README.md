@@ -41,6 +41,7 @@ A Mineflayer bot for flipping maps on DonutSMP auction house.
 
 - ✅ Automatic auction house monitoring
 - ✅ Smart price parsing (handles $995, $5K, $9.9K formats)
+- ✅ **AFK Farming** - Automatically teleports to random AFK location at startup to farm shards while flipping
 - ✅ Anti-AFK detection and handling
 - ✅ Auto-reconnect on disconnect
 - ✅ Map unstacking for bulk listings
@@ -165,6 +166,7 @@ Set environment variables to override defaults:
 - `delayAfterJoin`: Wait time after spawning before starting (default: 5000)
 - `windowTimeout`: Timeout for window opening operations in ms (default: 15000)
 - `debugEvents`: Enable event debugging to diagnose window opening issues (default: false) - **Warning: Only use for debugging**
+- `enableAfkFarming`: Enable automatic AFK farming at startup (default: true) - Sends `/afk` command and clicks slot 49 to teleport to a random AFK location for farming shards while flipping auctions
 - `mode`: Bot operation mode (default: 'normal')
   - `'normal'`: Normal buy/sell operation with automatic cleanup
   - `'sell-only'`: Only runs sell-all cleanup and exits (for manual inventory cleanup)
